@@ -1,0 +1,1122 @@
+openapi: 3.0.0
+info:
+  title: API REST - Facturación Electrónica G3
+  version: 1.0.0
+  description: |
+    API REST para el los procesos de facturación electrónica.
+    Todos los endpoints requieren la cabecera WSKey.
+
+servers:
+  - url: http://localhost:3000
+    description: Servidor local
+
+tags:
+  - name: FlujoEmision
+  - name: Factura
+  - name: Empresa
+  - name: Validacion
+  - name: GestorArchivos
+  - name: Comunicacion
+  - name: Auditoria
+
+paths:
+  /flujo-emision/iniciar:
+    post:
+      tags:
+        - FlujoEmision
+      summary: Iniciar flujo de emisión de factura
+      description: |
+        Inicia el proceso completo de emisión de factura: valida WSKey, valida datos de entrada,
+        consulta empresa, verifica coincidencia de datos, crea factura, genera XML/PDF,
+        envía documentación y notifica el resultado.
+      operationId: iniciarFlujoEmision
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmisionFacturaRequest"
+      responses:
+        "200":
+          description: Flujo completado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcesoEmisionResponse"
+        "400":
+          description: Datos de entrada inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Empresa no registrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error técnico en el flujo
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoEmisionController
+
+  /facturas:
+    post:
+      tags:
+        - Factura
+      summary: Crear factura
+      description: Crea y persiste una factura en base de datos.
+      operationId: crearFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FacturaCreateRequest"
+      responses:
+        "201":
+          description: Factura creada correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FacturaResponse"
+        "400":
+          description: Datos de factura inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error al crear la factura
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FacturaController
+
+  /facturas/{idFactura}/estado:
+    get:
+      tags:
+        - Factura
+      summary: Consultar estado de factura
+      description: Devuelve el estado actual de una factura.
+      operationId: consultarEstadoFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/idFactura"
+      responses:
+        "200":
+          description: Estado consultado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadoFacturaResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FacturaController
+
+  /facturas/{idFactura}/actualizar-estado:
+    post:
+      tags:
+        - Factura
+      summary: Actualizar estado de factura
+      description: Actualiza el estado de una factura existente.
+      operationId: actualizarEstadoFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/idFactura"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActualizarEstadoFacturaRequest"
+      responses:
+        "200":
+          description: Estado actualizado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MensajeResponse"
+        "400":
+          description: Estado no válido
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FacturaController
+
+  /empresas/{email}:
+    get:
+      tags:
+        - Empresa
+      summary: Consultar empresa
+      description: Consulta una empresa registrada a partir de su email.
+      operationId: consultarEmpresa
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/emailEmpresa"
+      responses:
+        "200":
+          description: Empresa encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmpresaResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Empresa no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: EmpresaController
+
+  /empresas/{email}/verificar-datos:
+    post:
+      tags:
+        - Empresa
+      summary: Verificar coincidencia de datos de empresa
+      description: |
+        Comprueba si los datos introducidos coinciden con los almacenados para la empresa
+        identificada por su email.
+      operationId: verificarDatosEmpresa
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/emailEmpresa"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerificarEmpresaRequest"
+      responses:
+        "200":
+          description: Resultado de la verificación
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificacionResponse"
+        "400":
+          description: Datos de empresa inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Empresa no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: EmpresaController
+
+  /validaciones/wskey:
+    post:
+      tags:
+        - Validacion
+      summary: Validar WSKey
+      description: Valida la clave WSKey enviada por cabecera.
+      operationId: validarWsKey
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      responses:
+        "200":
+          description: Resultado de la validación de la WSKey
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ValidacionController
+
+  /validaciones/datos-factura:
+    post:
+      tags:
+        - Validacion
+      summary: Validar datos de entrada de factura
+      description: Valida la estructura y reglas de negocio de los datos de entrada.
+      operationId: validarDatosFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FacturaInput"
+      responses:
+        "200":
+          description: Resultado de la validación de datos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionResponse"
+        "400":
+          description: Datos inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ValidacionController
+
+  /gestor-archivos/generar-xml/{idFactura}:
+    post:
+      tags:
+        - GestorArchivos
+      summary: Generar XML de la factura
+      description: Genera el documento XML asociado a una factura.
+      operationId: generarXmlFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/idFactura"
+      responses:
+        "200":
+          description: XML generado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentoGeneradoResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error técnico al generar XML
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: GestorArchivosController
+
+  /gestor-archivos/generar-pdf/{idFactura}:
+    post:
+      tags:
+        - GestorArchivos
+      summary: Generar PDF de la factura
+      description: Genera el documento PDF asociado a una factura.
+      operationId: generarPdfFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/idFactura"
+      responses:
+        "200":
+          description: PDF generado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentoGeneradoResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error técnico al generar PDF
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: GestorArchivosController
+
+  /comunicaciones/enviar:
+    post:
+      tags:
+        - Comunicacion
+      summary: Enviar comunicación
+      description: |
+        Envía una comunicación genérica. Puede usarse tanto para avisar a la empresa
+        como para enviar documentación a la Agencia Tributaria.
+      operationId: enviarComunicacion
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComunicacionRequest"
+      responses:
+        "200":
+          description: Comunicación enviada correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MensajeResponse"
+        "400":
+          description: Datos de comunicación inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error técnico al enviar la comunicación
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ComunicacionController
+
+  /auditoria/eventos:
+    post:
+      tags:
+        - Auditoria
+      summary: Registrar evento de auditoría
+      description: Registra un evento del sistema, por ejemplo un intento no autorizado.
+      operationId: registrarEventoAuditoria
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditoriaEventoRequest"
+      responses:
+        "201":
+          description: Evento registrado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MensajeResponse"
+        "400":
+          description: Datos de auditoría inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: AuditoriaController
+
+  /auditoria/errores:
+    post:
+      tags:
+        - Auditoria
+      summary: Registrar error técnico
+      description: Registra un error técnico producido durante el proceso.
+      operationId: registrarErrorAuditoria
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditoriaErrorRequest"
+      responses:
+        "201":
+          description: Error registrado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MensajeResponse"
+        "400":
+          description: Datos de error inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: AuditoriaController
+
+components:
+  parameters:
+    WSKey:
+      name: WSKey
+      in: header
+      description: Clave de autenticación WSKey
+      required: true
+      style: simple
+      explode: false
+      schema:
+        type: string
+
+    idFactura:
+      name: idFactura
+      in: path
+      description: Identificador único de la factura
+      required: true
+      style: simple
+      explode: false
+      schema:
+        type: integer
+        format: int64
+        example: 123
+
+    emailEmpresa:
+      name: email
+      in: path
+      description: Email de la empresa
+      required: true
+      style: simple
+      explode: false
+      schema:
+        type: string
+        format: email
+        example: empresa@correo.com
+
+  headers:
+    salidaHeader:
+      description: Información detallada de la ejecución del método.
+      style: simple
+      explode: false
+      schema:
+        type: string
+
+  schemas:
+    EmisionFacturaRequest:
+      type: object
+      required:
+        - empresa
+        - factura
+      properties:
+        empresa:
+          $ref: "#/components/schemas/EmpresaInput"
+        factura:
+          $ref: "#/components/schemas/FacturaInput"
+      example:
+        empresa:
+          email: empresa@correo.com
+          nombre: Mi Empresa S.L.
+          nif: B12345678
+          iban: ES9121000418450200051332
+          direccion: Calle Mayor 1, Alicante
+        factura:
+          numeroFactura: FAC-2025-001
+          baseImponible: 1250.75
+          iva: 0.21
+          moneda: EUR
+          tipo: ORDINARIA
+          estado: VALIDA
+          fechaEmision: "2025-05-10T14:30:50"
+          fechaDesdeFacturacion: "2025-04-01"
+          fechaHastaFacturacion: "2025-05-01"
+
+    EmpresaInput:
+      type: object
+      required:
+        - email
+        - nombre
+        - nif
+        - iban
+      properties:
+        email:
+          type: string
+          format: email
+          example: empresa@correo.com
+        nombre:
+          type: string
+          example: Mi Empresa S.L.
+        nif:
+          type: string
+          example: B12345678
+        iban:
+          type: string
+          example: ES9121000418450200051332
+        direccion:
+          type: string
+          example: Calle Mayor 1, Alicante
+
+    FacturaInput:
+      type: object
+      required:
+        - numeroFactura
+        - baseImponible
+        - iva
+        - moneda
+        - tipo
+        - fechaEmision
+      properties:
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        baseImponible:
+          type: number
+          format: double
+          example: 1250.75
+        iva:
+          type: number
+          format: double
+          example: 0.21
+        moneda:
+          type: string
+          example: EUR
+        tipo:
+          type: string
+          example: ORDINARIA
+        estado:
+          type: string
+          example: VALIDA
+        fechaEmision:
+          type: string
+          format: date-time
+          example: "2025-05-10T14:30:50"
+        fechaDesdeFacturacion:
+          type: string
+          format: date
+          example: "2025-04-01"
+        fechaHastaFacturacion:
+          type: string
+          format: date
+          example: "2025-05-01"
+
+    FacturaCreateRequest:
+      type: object
+      required:
+        - empresaId
+        - numeroFactura
+        - baseImponible
+        - iva
+        - moneda
+        - tipo
+        - estado
+        - fechaEmision
+      properties:
+        empresaId:
+          type: integer
+          format: int64
+          example: 34
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        baseImponible:
+          type: number
+          format: double
+          example: 1250.75
+        iva:
+          type: number
+          format: double
+          example: 0.21
+        moneda:
+          type: string
+          example: EUR
+        tipo:
+          type: string
+          example: ORDINARIA
+        estado:
+          type: string
+          enum:
+            - VALIDA
+            - INVALIDA
+            - PENDIENTE
+            - PENDIENTE_REINTENTO
+            - ENVIADA
+          example: VALIDA
+        fechaEmision:
+          type: string
+          format: date-time
+          example: "2025-05-10T14:30:50"
+        fechaDesdeFacturacion:
+          type: string
+          format: date
+          example: "2025-04-01"
+        fechaHastaFacturacion:
+          type: string
+          format: date
+          example: "2025-05-01"
+
+    FacturaResponse:
+      type: object
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          example: 123
+        empresaId:
+          type: integer
+          format: int64
+          example: 34
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        baseImponible:
+          type: number
+          format: double
+          example: 1250.75
+        iva:
+          type: number
+          format: double
+          example: 0.21
+        moneda:
+          type: string
+          example: EUR
+        tipo:
+          type: string
+          example: ORDINARIA
+        estado:
+          type: string
+          example: VALIDA
+        fechaDesdeFacturacion:
+          type: string
+          format: date
+          example: "2025-04-01"
+        fechaHastaFacturacion:
+          type: string
+          format: date
+          example: "2025-05-01"
+        fechaEmision:
+          type: string
+          format: date-time
+          example: "2025-05-10T14:30:50"
+
+    EstadoFacturaResponse:
+      type: object
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          example: 123
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        estado:
+          type: string
+          example: ENVIADA
+
+    ActualizarEstadoFacturaRequest:
+      type: object
+      required:
+        - nuevoEstado
+      properties:
+        nuevoEstado:
+          type: string
+          enum:
+            - VALIDA
+            - INVALIDA
+            - PENDIENTE
+            - PENDIENTE_REINTENTO
+            - ENVIADA
+          example: ENVIADA
+        motivo:
+          type: string
+          example: Envío a la Agencia Tributaria completado correctamente
+
+    EmpresaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 34
+        email:
+          type: string
+          format: email
+          example: empresa@correo.com
+        nombre:
+          type: string
+          example: Mi Empresa S.L.
+        nif:
+          type: string
+          example: B12345678
+        iban:
+          type: string
+          example: ES9121000418450200051332
+        direccion:
+          type: string
+          example: Calle Mayor 1, Alicante
+
+    VerificarEmpresaRequest:
+      type: object
+      required:
+        - nombre
+        - nif
+        - iban
+      properties:
+        nombre:
+          type: string
+          example: Mi Empresa S.L.
+        nif:
+          type: string
+          example: B12345678
+        iban:
+          type: string
+          example: ES9121000418450200051332
+        direccion:
+          type: string
+          example: Calle Mayor 1, Alicante
+
+    VerificacionResponse:
+      type: object
+      properties:
+        valido:
+          type: boolean
+          example: true
+        mensaje:
+          type: string
+          example: Los datos de la empresa coinciden correctamente
+
+    ValidacionResponse:
+      type: object
+      properties:
+        valido:
+          type: boolean
+          example: true
+        mensaje:
+          type: string
+          example: Validación realizada correctamente
+
+    DocumentoGeneradoResponse:
+      type: object
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          example: 123
+        tipoDocumento:
+          type: string
+          enum:
+            - XML
+            - PDF
+          example: XML
+        generado:
+          type: boolean
+          example: true
+        ruta:
+          type: string
+          example: /tmp/facturas/FAC-2025-001.xml
+        mensaje:
+          type: string
+          example: Documento generado correctamente
+
+    ComunicacionRequest:
+      type: object
+      required:
+        - destinatario
+        - asunto
+        - cuerpo
+      properties:
+        destinatario:
+          type: string
+          example: empresa@correo.com
+        cc:
+          type: array
+          items:
+            type: string
+          example:
+            - agencia@tributaria.es
+        asunto:
+          type: string
+          example: Resultado del proceso de emisión de factura
+        cuerpo:
+          type: string
+          example: La factura ha sido emitida correctamente.
+        adjuntos:
+          type: array
+          items:
+            type: string
+          example:
+            - /tmp/facturas/FAC-2025-001.xml
+            - /tmp/facturas/FAC-2025-001.pdf
+
+    AuditoriaEventoRequest:
+      type: object
+      required:
+        - tipoEvento
+        - descripcion
+      properties:
+        tipoEvento:
+          type: string
+          example: INTENTO_NO_AUTORIZADO
+        descripcion:
+          type: string
+          example: Se detectó una WSKey no válida en el inicio del flujo
+        fecha:
+          type: string
+          format: date-time
+          example: "2025-05-10T14:31:00"
+        origen:
+          type: string
+          example: flujo-emision
+
+    AuditoriaErrorRequest:
+      type: object
+      required:
+        - tipoError
+        - descripcion
+      properties:
+        tipoError:
+          type: string
+          example: ERROR_GENERACION_XML
+        descripcion:
+          type: string
+          example: Fallo técnico durante la generación del XML
+        fecha:
+          type: string
+          format: date-time
+          example: "2025-05-10T14:31:30"
+        idFactura:
+          type: integer
+          format: int64
+          example: 123
+        origen:
+          type: string
+          example: gestor-archivos
+
+    ProcesoEmisionResponse:
+      type: object
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          example: 123
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        estadoFinal:
+          type: string
+          example: ENVIADA
+        mensaje:
+          type: string
+          example: Proceso de emisión completado correctamente
+
+    MensajeResponse:
+      type: object
+      properties:
+        mensaje:
+          type: string
+          example: Operación realizada correctamente
+
+    ErrorResponse:
+      type: object
+      properties:
+        codigo:
+          type: string
+          example: ERR-400
+        mensaje:
+          type: string
+          example: Los datos introducidos no son válidos
+        detalle:
+          type: string
+          example: El campo fechaEmision es obligatorio
