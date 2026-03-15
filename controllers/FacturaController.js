@@ -16,6 +16,14 @@ const consultarEstadoFactura = async (request, response) => {
   await Controller.handleRequest(request, response, service.consultarEstadoFactura);
 };
 
+const consultarExistenciaFactura = async (request, response) => {
+  await Controller.handleRequest(request, response, service.consultarExistenciaFactura);
+};
+
+const consultarFacturaDetalle = async (request, response) => {
+  await Controller.handleRequest(request, response, service.consultarFacturaDetalle);
+};
+
 const crearFactura = async (request, response) => {
   await Controller.handleRequest(request, response, service.crearFactura);
 };
@@ -23,6 +31,8 @@ const crearFactura = async (request, response) => {
 
 module.exports = {
   actualizarEstadoFactura,
+  consultarExistenciaFactura,
+  consultarFacturaDetalle,
   consultarEstadoFactura,
   crearFactura,
 };

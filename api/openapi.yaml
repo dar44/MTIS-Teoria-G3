@@ -12,10 +12,12 @@ servers:
 
 tags:
   - name: FlujoEmision
+  - name: FlujoConsulta
   - name: Factura
   - name: Empresa
   - name: Validacion
   - name: GestorArchivos
+  - name: GestorRespuestas
   - name: Comunicacion
   - name: Auditoria
 
@@ -86,6 +88,72 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: FlujoEmisionController
 
+  /flujo-consulta/iniciar:
+    post:
+      tags:
+        - FlujoConsulta
+      summary: Iniciar flujo de consulta de factura
+      description: |
+        Inicia el proceso de consulta de factura: valida formato de entrada,
+        verifica existencia de la factura, recupera sus datos detallados,
+        formatea la respuesta en XML y devuelve el resultado o un error controlado.
+      operationId: iniciarFlujoConsulta
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsultaFacturaRequest"
+      responses:
+        "200":
+          description: Consulta completada correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcesoConsultaResponse"
+        "400":
+          description: Datos de entrada inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error técnico durante la consulta
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoConsultaController
+
   /facturas:
     post:
       tags:
@@ -131,6 +199,77 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Error al crear la factura
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FacturaController
+
+  /facturas/{idFactura}:
+    get:
+      tags:
+        - Factura
+      summary: Recuperar datos detallados de factura
+      description: Recupera los datos completos de una factura por su identificador.
+      operationId: consultarFacturaDetalle
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/idFactura"
+      responses:
+        "200":
+          description: Factura recuperada correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FacturaResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FacturaController
+
+  /facturas/{idFactura}/existencia:
+    get:
+      tags:
+        - Factura
+      summary: Consultar existencia de factura
+      description: Verifica si una factura existe en el sistema.
+      operationId: consultarExistenciaFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/idFactura"
+      responses:
+        "200":
+          description: Resultado de la verificación de existencia
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExistenciaFacturaResponse"
+        "401":
+          description: WSKey no válida
           headers:
             salida:
               $ref: "#/components/headers/salidaHeader"
@@ -561,6 +700,96 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: ComunicacionController
 
+  /gestor-respuestas/generar-xml:
+    post:
+      tags:
+        - GestorRespuestas
+      summary: Formatear respuesta XML de factura
+      description: Transforma la información de una factura al formato XML de salida.
+      operationId: generarXmlRespuestaFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerarXmlFacturaRequest"
+      responses:
+        "200":
+          description: Respuesta XML generada correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RespuestaXmlFactura"
+        "400":
+          description: Datos de factura inválidos para la generación XML
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: GestorRespuestasController
+
+  /gestor-respuestas/notificar-error:
+    post:
+      tags:
+        - GestorRespuestas
+      summary: Generar mensaje de error controlado
+      description: Construye un mensaje de error estandarizado para el flujo de consulta.
+      operationId: notificarErrorConsulta
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorConsultaRequest"
+      responses:
+        "200":
+          description: Mensaje de error generado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Datos de error inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: GestorRespuestasController
+
   /auditoria/eventos:
     post:
       tags:
@@ -696,6 +925,16 @@ components:
         type: string
 
   schemas:
+    ConsultaFacturaRequest:
+      type: object
+      required:
+        - idFactura
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          example: 123
+
     EmisionFacturaRequest:
       type: object
       required:
@@ -890,6 +1129,20 @@ components:
           type: string
           format: date-time
           example: "2025-05-10T14:30:50"
+
+    ExistenciaFacturaResponse:
+      type: object
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          example: 123
+        existe:
+          type: boolean
+          example: true
+        mensaje:
+          type: string
+          example: Factura encontrada en el sistema
 
     EstadoFacturaResponse:
       type: object
@@ -1100,6 +1353,62 @@ components:
         mensaje:
           type: string
           example: Proceso de emisión completado correctamente
+
+    ProcesoConsultaResponse:
+      type: object
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          example: 123
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        formato:
+          type: string
+          enum:
+            - XML
+          example: XML
+        contenido:
+          type: string
+          example: "<factura><id>123</id><numero>FAC-2025-001</numero></factura>"
+        mensaje:
+          type: string
+          example: Consulta de factura completada correctamente
+
+    GenerarXmlFacturaRequest:
+      type: object
+      required:
+        - factura
+      properties:
+        factura:
+          $ref: "#/components/schemas/FacturaResponse"
+
+    RespuestaXmlFactura:
+      type: object
+      properties:
+        xml:
+          type: string
+          example: "<factura><id>123</id><numero>FAC-2025-001</numero></factura>"
+        mensaje:
+          type: string
+          example: Respuesta XML generada correctamente
+
+    ErrorConsultaRequest:
+      type: object
+      required:
+        - codigo
+        - mensaje
+      properties:
+        codigo:
+          type: string
+          example: ERR-404
+        mensaje:
+          type: string
+          example: Factura no encontrada
+        detalle:
+          type: string
+          example: No existe ninguna factura asociada al id indicado
 
     MensajeResponse:
       type: object
