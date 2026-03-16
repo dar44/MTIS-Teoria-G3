@@ -14,6 +14,7 @@ tags:
   - name: FlujoEmision
   - name: FlujoConsulta
   - name: FlujoSubsanacion
+  - name: FlujoAnulacion
   - name: FlujoCobro
   - name: Factura
   - name: DocumentoPago
@@ -25,7 +26,6 @@ tags:
   - name: Notificacion
   - name: Estadistica
   - name: Auditoria
-  - name: FlujoAnulacion
 
 paths:
   /flujo-emision/iniciar:
