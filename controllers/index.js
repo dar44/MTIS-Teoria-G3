@@ -2,6 +2,7 @@ const AuditoriaController = require('./AuditoriaController');
 const ComunicacionController = require('./ComunicacionController');
 const EmpresaController = require('./EmpresaController');
 const FacturaController = require('./FacturaController');
+const FlujoAnulacionController = require('./FlujoAnulacionController');
 const FlujoConsultaController = require('./FlujoConsultaController');
 const FlujoEmisionController = require('./FlujoEmisionController');
 const FlujoSubsanacionController = require('./FlujoSubsanacionController');
@@ -14,6 +15,7 @@ module.exports = {
   ComunicacionController,
   EmpresaController,
   FacturaController,
+  FlujoAnulacionController,
   FlujoConsultaController,
   FlujoEmisionController,
   FlujoSubsanacionController,

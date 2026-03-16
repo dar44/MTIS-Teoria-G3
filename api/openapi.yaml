@@ -1,4 +1,4 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
   title: API REST - Facturación Electrónica G3
   version: 1.0.0
@@ -14,12 +14,17 @@ tags:
   - name: FlujoEmision
   - name: FlujoConsulta
   - name: FlujoSubsanacion
+  - name: FlujoAnulacion
+  - name: FlujoCobro
   - name: Factura
+  - name: DocumentoPago
   - name: Empresa
   - name: Validacion
   - name: GestorArchivos
   - name: GestorRespuestas
   - name: Comunicacion
+  - name: Notificacion
+  - name: Estadistica
   - name: Auditoria
 
 paths:
@@ -255,6 +260,7 @@ paths:
       tags:
         - Factura
         - FlujoConsulta
+        - FlujoAnulacion
       summary: Consultar existencia de factura
       description: Verifica si una factura existe en el sistema.
       operationId: consultarExistenciaFactura
@@ -287,6 +293,7 @@ paths:
       tags:
         - Factura
         - FlujoSubsanacion
+        - FlujoAnulacion
       summary: Consultar estado de factura
       description: Devuelve el estado actual de una factura.
       operationId: consultarEstadoFactura
@@ -328,6 +335,7 @@ paths:
       tags:
         - Factura
         - FlujoSubsanacion
+        - FlujoAnulacion
       summary: Actualizar estado de factura
       description: |
         Actualiza el estado de una factura existente en la base de datos.
@@ -668,6 +676,7 @@ paths:
     post:
       tags:
         - Comunicacion
+        - FlujoAnulacion
       summary: Enviar comunicación
       description: |
         Envía una comunicación genérica. Puede usarse tanto para avisar a la empresa
@@ -973,6 +982,137 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: FlujoSubsanacionController
 
+  # ── Flujo de Anulación (Servicio de Tarea – Sergio Mínguez) ──
+
+  /flujo-anulacion/iniciar:
+    post:
+      tags:
+        - FlujoAnulacion
+      summary: Iniciar flujo de anulación de factura
+      description: |
+        Inicia el proceso completo de anulación de una factura emitida.
+        El flujo valida la WSKey, valida los datos del solicitante (NIF, empresa),
+        verifica la existencia de la factura, consulta su estado actual,
+        comprueba que sea anulable (no anulada previamente),
+        envía la solicitud de anulación a la Agencia Tributaria,
+        actualiza el estado de la factura a ANULADA y
+        notifica al emisor el resultado de la anulación.
+      operationId: iniciarFlujoAnulacion
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnulacionRequest"
+      responses:
+        "200":
+          description: Flujo de anulación completado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcesoAnulacionResponse"
+        "400":
+          description: Datos del solicitante inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: La factura ya ha sido anulada previamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error técnico durante el flujo de anulación
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoAnulacionController
+
+  # ── Validación de Datos del Solicitante (Servicio de Utilidad – Anulación) ──
+
+  /validaciones/datos-solicitante:
+    post:
+      tags:
+        - Validacion
+        - FlujoAnulacion
+      summary: Validar datos del solicitante de anulación
+      description: |
+        Valida los datos del solicitante de la anulación: comprueba que el NIF
+        sea válido y que la empresa esté registrada en el sistema.
+      operationId: validarDatosSolicitante
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidacionSolicitanteRequest"
+      responses:
+        "200":
+          description: Resultado de la validación del solicitante
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionSolicitanteResponse"
+        "400":
+          description: Datos del solicitante inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ValidacionController
+
   # ── Factura Rectificativa (Servicio de Entidad) ──
 
   /facturas-rectificativas:
@@ -1129,6 +1269,273 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: ComunicacionController
+
+  # ── Flujo de Cobro (Servicio de Tarea) ──
+
+  /cobros/iniciar:
+    post:
+      tags:
+        - FlujoCobro
+      summary: Iniciar proceso de cobro
+      description: Coordina el flujo completo de validación, consulta, cobro, generación de documentos y notificación.
+      operationId: iniciarProcesoCobro
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IniciarCobroRequest"
+      responses:
+        "202":
+          description: Proceso de cobro iniciado correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MensajeResponse"
+        "400":
+          description: Error de validación o lógica de negocio.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoCobroController
+
+  # ── Servicios de Entidad (Cobro) ──
+
+  /facturas/consultar-estado/{numero-factura}:
+    get:
+      tags:
+        - Factura
+        - FlujoCobro
+      summary: Consultar existencia y estado de la factura
+      operationId: consultarEstadoFacturaPorNumero
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - name: numero-factura
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Datos y estado de la factura devueltos correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadoFacturaPorNumeroResponse"
+        "404":
+          description: Factura no encontrada.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FacturaController
+
+  /documentos-pago/crear:
+    post:
+      tags:
+        - DocumentoPago
+        - FlujoCobro
+      summary: Formatear y crear documento de pago
+      description: Persiste el registro del pago en la base de datos.
+      operationId: crearDocumentoPago
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearDocumentoPagoRequest"
+      responses:
+        "201":
+          description: Documento de pago creado con éxito.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentoPagoResponse"
+      x-swagger-router-controller: FacturaController
+
+  # ── Servicios de Utilidad (Cobro) ──
+
+  /validaciones/permisos:
+    post:
+      tags:
+        - Validacion
+        - FlujoCobro
+      summary: Validar permisos del solicitante
+      operationId: validarPermisosSolicitante
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidarPermisosRequest"
+      responses:
+        "200":
+          description: Permisos validados correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionResponse"
+        "403":
+          description: El usuario no tiene permisos (Forbidden).
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ValidacionController
+
+  /validaciones/fechas:
+    post:
+      tags:
+        - Validacion
+        - FlujoCobro
+      summary: Validar consistencia de fechas
+      operationId: validarConsistenciaFechas
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidarFechasRequest"
+      responses:
+        "200":
+          description: Fechas consistentes.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionResponse"
+        "400":
+          description: Inconsistencia en las fechas.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ValidacionController
+
+  /documentos/exportar-pdf/{numero-factura}:
+    post:
+      tags:
+        - GestorArchivos
+        - FlujoCobro
+      summary: Generar justificante en PDF
+      operationId: exportarJustificantePdf
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - name: numero-factura
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PDF generado correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "500":
+          description: Error generando el documento, requiere reintento.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: GestorArchivosController
+
+  /notificaciones/enviar:
+    post:
+      tags:
+        - Notificacion
+        - FlujoCobro
+      summary: Entregar reporte o notificar incidencia
+      operationId: enviarNotificacionCobro
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificacionCobroRequest"
+      responses:
+        "200":
+          description: Notificación enviada correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MensajeResponse"
+      x-swagger-router-controller: ComunicacionController
+
+  /estadisticas/calcular:
+    post:
+      tags:
+        - Estadistica
+        - FlujoCobro
+      summary: Calcular estadísticas de recaudación
+      operationId: calcularEstadisticasRecaudacion
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalcularEstadisticasRequest"
+      responses:
+        "200":
+          description: Estadísticas calculadas devueltas con éxito.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadisticasRecaudacionResponse"
+      x-swagger-router-controller: AuditoriaController
 
 components:
   parameters:
@@ -1917,3 +2324,221 @@ components:
         detalle:
           type: string
           example: El campo fechaEmision es obligatorio
+
+    # ── Schemas del flujo de Anulación (Sergio Mínguez) ──
+
+    AnulacionRequest:
+      type: object
+      required:
+        - idFactura
+        - nifSolicitante
+        - emailSolicitante
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          description: Identificador de la factura que se desea anular
+          example: 123
+        nifSolicitante:
+          type: string
+          description: NIF del solicitante de la anulación
+          example: B12345678
+        emailSolicitante:
+          type: string
+          format: email
+          description: Email del solicitante de la anulación
+          example: empresa@correo.com
+        motivo:
+          type: string
+          description: Motivo por el que se solicita la anulación de la factura
+          example: Factura emitida por error a destinatario incorrecto
+      example:
+        idFactura: 123
+        nifSolicitante: B12345678
+        emailSolicitante: empresa@correo.com
+        motivo: Factura emitida por error a destinatario incorrecto
+
+    ProcesoAnulacionResponse:
+      type: object
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          description: Identificador de la factura anulada
+          example: 123
+        numeroFactura:
+          type: string
+          description: Número de la factura anulada
+          example: FAC-2025-001
+        estadoAnterior:
+          type: string
+          description: Estado de la factura antes de la anulación
+          example: ENVIADA
+        estadoFinal:
+          type: string
+          description: Estado de la factura tras la anulación
+          example: ANULADA
+        mensaje:
+          type: string
+          example: Proceso de anulación completado correctamente
+
+    ValidacionSolicitanteRequest:
+      type: object
+      required:
+        - nif
+        - email
+      properties:
+        nif:
+          type: string
+          description: NIF del solicitante a validar
+          example: B12345678
+        email:
+          type: string
+          format: email
+          description: Email del solicitante a validar
+          example: empresa@correo.com
+
+    ValidacionSolicitanteResponse:
+      type: object
+      properties:
+        valido:
+          type: boolean
+          description: Indica si el solicitante es válido globalmente
+          example: true
+        nifValido:
+          type: boolean
+          description: Indica si el NIF proporcionado es válido
+          example: true
+        empresaRegistrada:
+          type: boolean
+          description: Indica si la empresa está registrada en el sistema
+          example: true
+        mensaje:
+          type: string
+          example: Datos del solicitante validados correctamente
+
+    # ── Schemas del flujo de Cobro ──
+
+    IniciarCobroRequest:
+      type: object
+      properties:
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        importe:
+          type: number
+          format: double
+          example: 1250.75
+        fecha:
+          type: string
+          format: date
+          example: "2026-03-16"
+        categoria:
+          type: string
+          example: ORDINARIA
+
+    EstadoFacturaPorNumeroResponse:
+      type: object
+      properties:
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        existe:
+          type: boolean
+          example: true
+        estado:
+          type: string
+          example: ENVIADA
+        mensaje:
+          type: string
+          example: Datos y estado de la factura devueltos correctamente.
+
+    CrearDocumentoPagoRequest:
+      type: object
+      properties:
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        importeCobrado:
+          type: number
+          format: double
+          example: 1250.75
+
+    DocumentoPagoResponse:
+      type: object
+      properties:
+        idDocumentoPago:
+          type: integer
+          format: int64
+          example: 9001
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        importeCobrado:
+          type: number
+          format: double
+          example: 1250.75
+        mensaje:
+          type: string
+          example: Documento de pago creado con éxito.
+
+    ValidarPermisosRequest:
+      type: object
+      properties:
+        usuarioId:
+          type: string
+          example: usr-1001
+        accion:
+          type: string
+          example: COBRAR_FACTURA
+
+    ValidarFechasRequest:
+      type: object
+      properties:
+        fechaOperacion:
+          type: string
+          format: date
+          example: "2026-03-16"
+
+    NotificacionCobroRequest:
+      type: object
+      properties:
+        destinatario:
+          type: string
+          format: email
+          example: empresa@correo.com
+        mensaje:
+          type: string
+          example: Se ha generado el justificante de cobro de la factura FAC-2025-001.
+        tipoNotificacion:
+          type: string
+          enum:
+            - INCIDENCIA
+            - JUSTIFICANTE
+          example: JUSTIFICANTE
+
+    CalcularEstadisticasRequest:
+      type: object
+      properties:
+        rangoFechas:
+          type: string
+          example: "2026-01-01/2026-03-31"
+
+    EstadisticasRecaudacionResponse:
+      type: object
+      properties:
+        totalCobrado:
+          type: number
+          format: double
+          example: 15890.40
+        totalFacturasCobradas:
+          type: integer
+          format: int32
+          example: 42
+        promedioCobro:
+          type: number
+          format: double
+          example: 378.34
+        mensaje:
+          type: string
+          example: Estadísticas calculadas devueltas con éxito.
