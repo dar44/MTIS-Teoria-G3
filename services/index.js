@@ -2,6 +2,7 @@ const AuditoriaService = require('./AuditoriaService');
 const ComunicacionService = require('./ComunicacionService');
 const EmpresaService = require('./EmpresaService');
 const FacturaService = require('./FacturaService');
+const FlujoAnulacionService = require('./FlujoAnulacionService');
 const FlujoConsultaService = require('./FlujoConsultaService');
 const FlujoEmisionService = require('./FlujoEmisionService');
 const FlujoSubsanacionService = require('./FlujoSubsanacionService');
@@ -14,6 +15,7 @@ module.exports = {
   ComunicacionService,
   EmpresaService,
   FacturaService,
+  FlujoAnulacionService,
   FlujoConsultaService,
   FlujoEmisionService,
   FlujoSubsanacionService,

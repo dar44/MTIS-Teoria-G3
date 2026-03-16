@@ -21,6 +21,7 @@ tags:
   - name: GestorRespuestas
   - name: Comunicacion
   - name: Auditoria
+  - name: FlujoAnulacion
 
 paths:
   /flujo-emision/iniciar:
@@ -253,6 +254,7 @@ paths:
     get:
       tags:
         - Factura
+        - FlujoAnulacion
       summary: Consultar existencia de factura
       description: Verifica si una factura existe en el sistema.
       operationId: consultarExistenciaFactura
@@ -285,6 +287,7 @@ paths:
       tags:
         - Factura
         - FlujoSubsanacion
+        - FlujoAnulacion
       summary: Consultar estado de factura
       description: Devuelve el estado actual de una factura.
       operationId: consultarEstadoFactura
@@ -326,6 +329,7 @@ paths:
       tags:
         - Factura
         - FlujoSubsanacion
+        - FlujoAnulacion
       summary: Actualizar estado de factura
       description: |
         Actualiza el estado de una factura existente en la base de datos.
@@ -666,6 +670,7 @@ paths:
     post:
       tags:
         - Comunicacion
+        - FlujoAnulacion
       summary: Enviar comunicación
       description: |
         Envía una comunicación genérica. Puede usarse tanto para avisar a la empresa
@@ -897,6 +902,137 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: AuditoriaController
+
+  # ── Flujo de Anulación (Servicio de Tarea – Sergio Mínguez) ──
+
+  /flujo-anulacion/iniciar:
+    post:
+      tags:
+        - FlujoAnulacion
+      summary: Iniciar flujo de anulación de factura
+      description: |
+        Inicia el proceso completo de anulación de una factura emitida.
+        El flujo valida la WSKey, valida los datos del solicitante (NIF, empresa),
+        verifica la existencia de la factura, consulta su estado actual,
+        comprueba que sea anulable (no anulada previamente),
+        envía la solicitud de anulación a la Agencia Tributaria,
+        actualiza el estado de la factura a ANULADA y
+        notifica al emisor el resultado de la anulación.
+      operationId: iniciarFlujoAnulacion
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnulacionRequest"
+      responses:
+        "200":
+          description: Flujo de anulación completado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcesoAnulacionResponse"
+        "400":
+          description: Datos del solicitante inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: La factura ya ha sido anulada previamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error técnico durante el flujo de anulación
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoAnulacionController
+
+  # ── Validación de Datos del Solicitante (Servicio de Utilidad – Anulación) ──
+
+  /validaciones/datos-solicitante:
+    post:
+      tags:
+        - Validacion
+        - FlujoAnulacion
+      summary: Validar datos del solicitante de anulación
+      description: |
+        Valida los datos del solicitante de la anulación: comprueba que el NIF
+        sea válido y que la empresa esté registrada en el sistema.
+      operationId: validarDatosSolicitante
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidacionSolicitanteRequest"
+      responses:
+        "200":
+          description: Resultado de la validación del solicitante
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionSolicitanteResponse"
+        "400":
+          description: Datos del solicitante inválidos
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ValidacionController
 
   # ── Flujo de Subsanación (Servicio de Tarea) ──
 
@@ -1913,3 +2049,95 @@ components:
         detalle:
           type: string
           example: El campo fechaEmision es obligatorio
+
+    # ── Schemas del flujo de Anulación (Sergio Mínguez) ──
+
+    AnulacionRequest:
+      type: object
+      required:
+        - idFactura
+        - nifSolicitante
+        - emailSolicitante
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          description: Identificador de la factura que se desea anular
+          example: 123
+        nifSolicitante:
+          type: string
+          description: NIF del solicitante de la anulación
+          example: B12345678
+        emailSolicitante:
+          type: string
+          format: email
+          description: Email del solicitante de la anulación
+          example: empresa@correo.com
+        motivo:
+          type: string
+          description: Motivo por el que se solicita la anulación de la factura
+          example: Factura emitida por error a destinatario incorrecto
+      example:
+        idFactura: 123
+        nifSolicitante: B12345678
+        emailSolicitante: empresa@correo.com
+        motivo: Factura emitida por error a destinatario incorrecto
+
+    ProcesoAnulacionResponse:
+      type: object
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          description: Identificador de la factura anulada
+          example: 123
+        numeroFactura:
+          type: string
+          description: Número de la factura anulada
+          example: FAC-2025-001
+        estadoAnterior:
+          type: string
+          description: Estado de la factura antes de la anulación
+          example: ENVIADA
+        estadoFinal:
+          type: string
+          description: Estado de la factura tras la anulación
+          example: ANULADA
+        mensaje:
+          type: string
+          example: Proceso de anulación completado correctamente
+
+    ValidacionSolicitanteRequest:
+      type: object
+      required:
+        - nif
+        - email
+      properties:
+        nif:
+          type: string
+          description: NIF del solicitante a validar
+          example: B12345678
+        email:
+          type: string
+          format: email
+          description: Email del solicitante a validar
+          example: empresa@correo.com
+
+    ValidacionSolicitanteResponse:
+      type: object
+      properties:
+        valido:
+          type: boolean
+          description: Indica si el solicitante es válido globalmente
+          example: true
+        nifValido:
+          type: boolean
+          description: Indica si el NIF proporcionado es válido
+          example: true
+        empresaRegistrada:
+          type: boolean
+          description: Indica si la empresa está registrada en el sistema
+          example: true
+        mensaje:
+          type: string
+          example: Datos del solicitante validados correctamente

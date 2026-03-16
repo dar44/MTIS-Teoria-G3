@@ -41,8 +41,31 @@ const validarWsKey = () => new Promise(
     }
   },
 );
+/**
+* Validar datos del solicitante
+* Valida los datos del solicitante de la anulación: comprueba que el NIF
+* sea válido y que la empresa esté registrada en el sistema.
+*
+* validacionSolicitanteRequest ValidacionSolicitanteRequest
+* returns ValidacionSolicitanteResponse
+* */
+const validarDatosSolicitante = ({ validacionSolicitanteRequest }) => new Promise(
+  async (resolve, reject) => {
+    try {
+      resolve(Service.successResponse({
+        validacionSolicitanteRequest,
+      }));
+    } catch (e) {
+      reject(Service.rejectResponse(
+        e.message || 'Invalid input',
+        e.status || 405,
+      ));
+    }
+  },
+);
 
 module.exports = {
   validarDatosFactura,
   validarWsKey,
+  validarDatosSolicitante,
 };

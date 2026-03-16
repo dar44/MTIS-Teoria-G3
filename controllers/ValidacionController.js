@@ -16,9 +16,13 @@ const validarWsKey = async (request, response) => {
   await Controller.handleRequest(request, response, service.validarWsKey);
 };
 
+const validarDatosSolicitante = async (request, response) => {
+  await Controller.handleRequest(request, response, service.validarDatosSolicitante);
+};
+
 
 module.exports = {
   validarWsKey,
   validarDatosFactura,
-
+  validarDatosSolicitante,
 };
