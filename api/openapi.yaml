@@ -213,6 +213,7 @@ paths:
     get:
       tags:
         - Factura
+        - FlujoConsulta
       summary: Recuperar datos detallados de factura
       description: Recupera los datos completos de una factura por su identificador.
       operationId: consultarFacturaDetalle
@@ -253,6 +254,7 @@ paths:
     get:
       tags:
         - Factura
+        - FlujoConsulta
       summary: Consultar existencia de factura
       description: Verifica si una factura existe en el sistema.
       operationId: consultarExistenciaFactura
@@ -722,6 +724,7 @@ paths:
     post:
       tags:
         - GestorRespuestas
+        - FlujoConsulta
       summary: Formatear respuesta XML de factura
       description: Transforma la información de una factura al formato XML de salida.
       operationId: generarXmlRespuestaFactura
@@ -767,6 +770,7 @@ paths:
     post:
       tags:
         - GestorRespuestas
+        - FlujoConsulta
       summary: Generar mensaje de error controlado
       description: Construye un mensaje de error estandarizado para el flujo de consulta.
       operationId: notificarErrorConsulta
