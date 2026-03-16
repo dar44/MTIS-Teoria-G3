@@ -1,4 +1,4 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
   title: API REST - Facturación Electrónica G3
   version: 1.0.0
@@ -14,12 +14,16 @@ tags:
   - name: FlujoEmision
   - name: FlujoConsulta
   - name: FlujoSubsanacion
+  - name: FlujoCobro
   - name: Factura
+  - name: DocumentoPago
   - name: Empresa
   - name: Validacion
   - name: GestorArchivos
   - name: GestorRespuestas
   - name: Comunicacion
+  - name: Notificacion
+  - name: Estadistica
   - name: Auditoria
   - name: FlujoAnulacion
 
@@ -1262,6 +1266,273 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: ComunicacionController
 
+  # ── Flujo de Cobro (Servicio de Tarea) ──
+
+  /cobros/iniciar:
+    post:
+      tags:
+        - FlujoCobro
+      summary: Iniciar proceso de cobro
+      description: Coordina el flujo completo de validación, consulta, cobro, generación de documentos y notificación.
+      operationId: iniciarProcesoCobro
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IniciarCobroRequest"
+      responses:
+        "202":
+          description: Proceso de cobro iniciado correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MensajeResponse"
+        "400":
+          description: Error de validación o lógica de negocio.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoCobroController
+
+  # ── Servicios de Entidad (Cobro) ──
+
+  /facturas/consultar-estado/{numero-factura}:
+    get:
+      tags:
+        - Factura
+        - FlujoCobro
+      summary: Consultar existencia y estado de la factura
+      operationId: consultarEstadoFacturaPorNumero
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - name: numero-factura
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Datos y estado de la factura devueltos correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadoFacturaPorNumeroResponse"
+        "404":
+          description: Factura no encontrada.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FacturaController
+
+  /documentos-pago/crear:
+    post:
+      tags:
+        - DocumentoPago
+        - FlujoCobro
+      summary: Formatear y crear documento de pago
+      description: Persiste el registro del pago en la base de datos.
+      operationId: crearDocumentoPago
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearDocumentoPagoRequest"
+      responses:
+        "201":
+          description: Documento de pago creado con éxito.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentoPagoResponse"
+      x-swagger-router-controller: FacturaController
+
+  # ── Servicios de Utilidad (Cobro) ──
+
+  /validaciones/permisos:
+    post:
+      tags:
+        - Validacion
+        - FlujoCobro
+      summary: Validar permisos del solicitante
+      operationId: validarPermisosSolicitante
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidarPermisosRequest"
+      responses:
+        "200":
+          description: Permisos validados correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionResponse"
+        "403":
+          description: El usuario no tiene permisos (Forbidden).
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ValidacionController
+
+  /validaciones/fechas:
+    post:
+      tags:
+        - Validacion
+        - FlujoCobro
+      summary: Validar consistencia de fechas
+      operationId: validarConsistenciaFechas
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidarFechasRequest"
+      responses:
+        "200":
+          description: Fechas consistentes.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidacionResponse"
+        "400":
+          description: Inconsistencia en las fechas.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: ValidacionController
+
+  /documentos/exportar-pdf/{numero-factura}:
+    post:
+      tags:
+        - GestorArchivos
+        - FlujoCobro
+      summary: Generar justificante en PDF
+      operationId: exportarJustificantePdf
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - name: numero-factura
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: PDF generado correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "500":
+          description: Error generando el documento, requiere reintento.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: GestorArchivosController
+
+  /notificaciones/enviar:
+    post:
+      tags:
+        - Notificacion
+        - FlujoCobro
+      summary: Entregar reporte o notificar incidencia
+      operationId: enviarNotificacionCobro
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificacionCobroRequest"
+      responses:
+        "200":
+          description: Notificación enviada correctamente.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MensajeResponse"
+      x-swagger-router-controller: ComunicacionController
+
+  /estadisticas/calcular:
+    post:
+      tags:
+        - Estadistica
+        - FlujoCobro
+      summary: Calcular estadísticas de recaudación
+      operationId: calcularEstadisticasRecaudacion
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalcularEstadisticasRequest"
+      responses:
+        "200":
+          description: Estadísticas calculadas devueltas con éxito.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstadisticasRecaudacionResponse"
+      x-swagger-router-controller: AuditoriaController
+
 components:
   parameters:
     WSKey:
@@ -2141,3 +2412,129 @@ components:
         mensaje:
           type: string
           example: Datos del solicitante validados correctamente
+
+    # ── Schemas del flujo de Cobro ──
+
+    IniciarCobroRequest:
+      type: object
+      properties:
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        importe:
+          type: number
+          format: double
+          example: 1250.75
+        fecha:
+          type: string
+          format: date
+          example: "2026-03-16"
+        categoria:
+          type: string
+          example: ORDINARIA
+
+    EstadoFacturaPorNumeroResponse:
+      type: object
+      properties:
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        existe:
+          type: boolean
+          example: true
+        estado:
+          type: string
+          example: ENVIADA
+        mensaje:
+          type: string
+          example: Datos y estado de la factura devueltos correctamente.
+
+    CrearDocumentoPagoRequest:
+      type: object
+      properties:
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        importeCobrado:
+          type: number
+          format: double
+          example: 1250.75
+
+    DocumentoPagoResponse:
+      type: object
+      properties:
+        idDocumentoPago:
+          type: integer
+          format: int64
+          example: 9001
+        numeroFactura:
+          type: string
+          example: FAC-2025-001
+        importeCobrado:
+          type: number
+          format: double
+          example: 1250.75
+        mensaje:
+          type: string
+          example: Documento de pago creado con éxito.
+
+    ValidarPermisosRequest:
+      type: object
+      properties:
+        usuarioId:
+          type: string
+          example: usr-1001
+        accion:
+          type: string
+          example: COBRAR_FACTURA
+
+    ValidarFechasRequest:
+      type: object
+      properties:
+        fechaOperacion:
+          type: string
+          format: date
+          example: "2026-03-16"
+
+    NotificacionCobroRequest:
+      type: object
+      properties:
+        destinatario:
+          type: string
+          format: email
+          example: empresa@correo.com
+        mensaje:
+          type: string
+          example: Se ha generado el justificante de cobro de la factura FAC-2025-001.
+        tipoNotificacion:
+          type: string
+          enum:
+            - INCIDENCIA
+            - JUSTIFICANTE
+          example: JUSTIFICANTE
+
+    CalcularEstadisticasRequest:
+      type: object
+      properties:
+        rangoFechas:
+          type: string
+          example: "2026-01-01/2026-03-31"
+
+    EstadisticasRecaudacionResponse:
+      type: object
+      properties:
+        totalCobrado:
+          type: number
+          format: double
+          example: 15890.40
+        totalFacturasCobradas:
+          type: integer
+          format: int32
+          example: 42
+        promedioCobro:
+          type: number
+          format: double
+          example: 378.34
+        mensaje:
+          type: string
+          example: Estadísticas calculadas devueltas con éxito.
