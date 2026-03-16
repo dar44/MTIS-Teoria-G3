@@ -5,27 +5,42 @@ info:
   description: |
     API REST para el los procesos de facturación electrónica.
     Todos los endpoints requieren la cabecera WSKey.
+  license:
+    name: Unlicense
+    url: https://unlicense.org/
 
 servers:
-  - url: http://localhost:3000
-    description: Servidor local
+  - url: https://dev.facturacion-g3.local
+    description: Servidor de desarrollo
 
 tags:
   - name: FlujoEmision
+    description: Operaciones del flujo de emision de facturas
   - name: FlujoConsulta
+    description: Operaciones del flujo de consulta de facturas
   - name: FlujoSubsanacion
+    description: Operaciones del flujo de subsanacion de facturas
   - name: FlujoAnulacion
+    description: Operaciones del flujo de anulacion de facturas
   - name: FlujoCobro
+    description: Operaciones del flujo de cobro de facturas
   - name: Factura
-  - name: DocumentoPago
+    description: Gestion y consulta de facturas
   - name: Empresa
+    description: Operaciones relacionadas con empresas
   - name: Validacion
+    description: Servicios de validacion de datos y permisos
   - name: GestorArchivos
-  - name: GestorRespuestas
+    description: Servicios de generacion y gestion de archivos
   - name: Comunicacion
-  - name: Notificacion
+    description: Servicios de comunicacion saliente
   - name: Estadistica
+    description: Servicios de calculo de estadisticas
   - name: Auditoria
+    description: Registro de eventos y errores de auditoria
+
+security:
+  - WSKeyAuth: []
 
 paths:
   /flujo-emision/iniciar:
@@ -101,7 +116,7 @@ paths:
       summary: Iniciar flujo de consulta de factura
       description: |
         Inicia el proceso de consulta de factura: valida formato de entrada,
-        verifica existencia de la factura, recupera sus datos detallados,
+        consulta el estado de la factura, recupera sus datos detallados,
         formatea la respuesta en XML y devuelve el resultado o un error controlado.
       operationId: iniciarFlujoConsulta
       parameters:
@@ -164,6 +179,7 @@ paths:
     post:
       tags:
         - Factura
+        - FlujoEmision
       summary: Crear factura
       description: Crea y persiste una factura en base de datos.
       operationId: crearFactura
@@ -255,45 +271,15 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: FacturaController
 
-  /facturas/{idFactura}/existencia:
-    get:
-      tags:
-        - Factura
-        - FlujoConsulta
-        - FlujoAnulacion
-      summary: Consultar existencia de factura
-      description: Verifica si una factura existe en el sistema.
-      operationId: consultarExistenciaFactura
-      parameters:
-        - $ref: "#/components/parameters/WSKey"
-        - $ref: "#/components/parameters/idFactura"
-      responses:
-        "200":
-          description: Resultado de la verificación de existencia
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ExistenciaFacturaResponse"
-        "401":
-          description: WSKey no válida
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-swagger-router-controller: FacturaController
-
   /facturas/{idFactura}/estado:
     get:
       tags:
         - Factura
+        - FlujoConsulta
+        - FlujoEmision
         - FlujoSubsanacion
         - FlujoAnulacion
+        - FlujoCobro
       summary: Consultar estado de factura
       description: Devuelve el estado actual de una factura.
       operationId: consultarEstadoFactura
@@ -334,6 +320,7 @@ paths:
     post:
       tags:
         - Factura
+        - FlujoEmision
         - FlujoSubsanacion
         - FlujoAnulacion
       summary: Actualizar estado de factura
@@ -404,6 +391,7 @@ paths:
     get:
       tags:
         - Empresa
+        - FlujoEmision
       summary: Consultar empresa
       description: Consulta una empresa registrada a partir de su email.
       operationId: consultarEmpresa
@@ -444,6 +432,7 @@ paths:
     post:
       tags:
         - Empresa
+        - FlujoEmision
       summary: Verificar coincidencia de datos de empresa
       description: |
         Comprueba si los datos introducidos coinciden con los almacenados para la empresa
@@ -497,40 +486,11 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: EmpresaController
 
-  /validaciones/wskey:
-    post:
-      tags:
-        - Validacion
-      summary: Validar WSKey
-      description: Valida la clave WSKey enviada por cabecera.
-      operationId: validarWsKey
-      parameters:
-        - $ref: "#/components/parameters/WSKey"
-      responses:
-        "200":
-          description: Resultado de la validación de la WSKey
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidacionResponse"
-        "401":
-          description: WSKey no válida
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-swagger-router-controller: ValidacionController
-
   /validaciones/datos-factura:
     post:
       tags:
         - Validacion
+        - FlujoEmision
       summary: Validar datos de entrada de factura
       description: Valida la estructura y reglas de negocio de los datos de entrada.
       operationId: validarDatosFactura
@@ -576,6 +536,8 @@ paths:
     post:
       tags:
         - GestorArchivos
+        - FlujoEmision
+        - FlujoConsulta
         - FlujoSubsanacion
       summary: Generar XML de la factura
       description: Genera el documento XML asociado a una factura.
@@ -626,7 +588,9 @@ paths:
     post:
       tags:
         - GestorArchivos
+        - FlujoEmision
         - FlujoSubsanacion
+        - FlujoCobro
       summary: Generar PDF de la factura
       description: Genera el documento PDF asociado a una factura.
       operationId: generarPdfFactura
@@ -676,7 +640,10 @@ paths:
     post:
       tags:
         - Comunicacion
+        - FlujoEmision
+        - FlujoConsulta
         - FlujoAnulacion
+        - FlujoCobro
       summary: Enviar comunicación
       description: |
         Envía una comunicación genérica. Puede usarse tanto para avisar a la empresa
@@ -729,102 +696,11 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: ComunicacionController
 
-  /gestor-respuestas/generar-xml:
-    post:
-      tags:
-        - GestorRespuestas
-        - FlujoConsulta
-      summary: Formatear respuesta XML de factura
-      description: Transforma la información de una factura al formato XML de salida.
-      operationId: generarXmlRespuestaFactura
-      parameters:
-        - $ref: "#/components/parameters/WSKey"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GenerarXmlFacturaRequest"
-      responses:
-        "200":
-          description: Respuesta XML generada correctamente
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RespuestaXmlFactura"
-        "400":
-          description: Datos de factura inválidos para la generación XML
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: WSKey no válida
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-swagger-router-controller: GestorRespuestasController
-
-  /gestor-respuestas/notificar-error:
-    post:
-      tags:
-        - GestorRespuestas
-        - FlujoConsulta
-      summary: Generar mensaje de error controlado
-      description: Construye un mensaje de error estandarizado para el flujo de consulta.
-      operationId: notificarErrorConsulta
-      parameters:
-        - $ref: "#/components/parameters/WSKey"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ErrorConsultaRequest"
-      responses:
-        "200":
-          description: Mensaje de error generado correctamente
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "400":
-          description: Datos de error inválidos
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: WSKey no válida
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-swagger-router-controller: GestorRespuestasController
-
   /auditoria/eventos:
     post:
       tags:
         - Auditoria
+        - FlujoEmision
       summary: Registrar evento de auditoría
       description: Registra un evento del sistema, por ejemplo un intento no autorizado.
       operationId: registrarEventoAuditoria
@@ -870,6 +746,7 @@ paths:
     post:
       tags:
         - Auditoria
+        - FlujoEmision
       summary: Registrar error técnico
       description: Registra un error técnico producido durante el proceso.
       operationId: registrarErrorAuditoria
@@ -992,7 +869,7 @@ paths:
       description: |
         Inicia el proceso completo de anulación de una factura emitida.
         El flujo valida la WSKey, valida los datos del solicitante (NIF, empresa),
-        verifica la existencia de la factura, consulta su estado actual,
+        consulta el estado actual de la factura,
         comprueba que sea anulable (no anulada previamente),
         envía la solicitud de anulación a la Agencia Tributaria,
         actualiza el estado de la factura a ANULADA y
@@ -1225,6 +1102,7 @@ paths:
     post:
       tags:
         - Comunicacion
+        - FlujoEmision
         - FlujoSubsanacion
       summary: Notificar subsanación a empresa y Agencia Tributaria
       description: |
@@ -1310,45 +1188,10 @@ paths:
 
   # ── Servicios de Entidad (Cobro) ──
 
-  /facturas/consultar-estado/{numero-factura}:
-    get:
-      tags:
-        - Factura
-        - FlujoCobro
-      summary: Consultar existencia y estado de la factura
-      operationId: consultarEstadoFacturaPorNumero
-      parameters:
-        - $ref: "#/components/parameters/WSKey"
-        - name: numero-factura
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Datos y estado de la factura devueltos correctamente.
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EstadoFacturaPorNumeroResponse"
-        "404":
-          description: Factura no encontrada.
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-swagger-router-controller: FacturaController
-
-  /documentos-pago/crear:
+  /gestor-archivos/crear-documento-pago:
     post:
       tags:
-        - DocumentoPago
+        - GestorArchivos
         - FlujoCobro
       summary: Formatear y crear documento de pago
       description: Persiste el registro del pago en la base de datos.
@@ -1371,7 +1214,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentoPagoResponse"
-      x-swagger-router-controller: FacturaController
+        "400":
+          description: Datos de entrada invalidos.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no valida.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: GestorArchivosController
 
   # ── Servicios de Utilidad (Cobro) ──
 
@@ -1447,69 +1308,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: ValidacionController
 
-  /documentos/exportar-pdf/{numero-factura}:
-    post:
-      tags:
-        - GestorArchivos
-        - FlujoCobro
-      summary: Generar justificante en PDF
-      operationId: exportarJustificantePdf
-      parameters:
-        - $ref: "#/components/parameters/WSKey"
-        - name: numero-factura
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: PDF generado correctamente.
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/pdf:
-              schema:
-                type: string
-                format: binary
-        "500":
-          description: Error generando el documento, requiere reintento.
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-swagger-router-controller: GestorArchivosController
-
-  /notificaciones/enviar:
-    post:
-      tags:
-        - Notificacion
-        - FlujoCobro
-      summary: Entregar reporte o notificar incidencia
-      operationId: enviarNotificacionCobro
-      parameters:
-        - $ref: "#/components/parameters/WSKey"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NotificacionCobroRequest"
-      responses:
-        "200":
-          description: Notificación enviada correctamente.
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MensajeResponse"
-      x-swagger-router-controller: ComunicacionController
-
   /estadisticas/calcular:
     post:
       tags:
@@ -1535,9 +1333,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EstadisticasRecaudacionResponse"
+        "400":
+          description: Solicitud invalida para el calculo de estadisticas.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no valida.
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: AuditoriaController
 
 components:
+  securitySchemes:
+    WSKeyAuth:
+      type: apiKey
+      in: header
+      name: WSKey
+
   parameters:
     WSKey:
       name: WSKey
@@ -1602,23 +1424,6 @@ components:
           $ref: "#/components/schemas/EmpresaInput"
         factura:
           $ref: "#/components/schemas/FacturaInput"
-      example:
-        empresa:
-          email: empresa@correo.com
-          nombre: Mi Empresa S.L.
-          nif: B12345678
-          iban: ES9121000418450200051332
-          direccion: Calle Mayor 1, Alicante
-        factura:
-          numeroFactura: FAC-2025-001
-          baseImponible: 1250.75
-          iva: 0.21
-          moneda: EUR
-          tipo: ORDINARIA
-          estado: VALIDA
-          fechaEmision: "2025-05-10T14:30:50Z"
-          fechaDesdeFacturacion: "2025-04-01"
-          fechaHastaFacturacion: "2025-05-01"
 
     EmpresaInput:
       type: object
@@ -1788,20 +1593,6 @@ components:
           type: string
           format: date-time
           example: "2025-05-10T14:30:50Z"
-
-    ExistenciaFacturaResponse:
-      type: object
-      properties:
-        idFactura:
-          type: integer
-          format: int64
-          example: 123
-        existe:
-          type: boolean
-          example: true
-        mensaje:
-          type: string
-          example: Factura encontrada en el sistema
 
     EstadoFacturaResponse:
       type: object
@@ -2036,40 +1827,6 @@ components:
         mensaje:
           type: string
           example: Consulta de factura completada correctamente
-
-    GenerarXmlFacturaRequest:
-      type: object
-      required:
-        - factura
-      properties:
-        factura:
-          $ref: "#/components/schemas/FacturaResponse"
-
-    RespuestaXmlFactura:
-      type: object
-      properties:
-        xml:
-          type: string
-          example: "<factura><id>123</id><numero>FAC-2025-001</numero></factura>"
-        mensaje:
-          type: string
-          example: Respuesta XML generada correctamente
-
-    ErrorConsultaRequest:
-      type: object
-      required:
-        - codigo
-        - mensaje
-      properties:
-        codigo:
-          type: string
-          example: ERR-404
-        mensaje:
-          type: string
-          example: Factura no encontrada
-        detalle:
-          type: string
-          example: No existe ninguna factura asociada al id indicado
 
     MensajeResponse:
       type: object
@@ -2437,22 +2194,6 @@ components:
           type: string
           example: ORDINARIA
 
-    EstadoFacturaPorNumeroResponse:
-      type: object
-      properties:
-        numeroFactura:
-          type: string
-          example: FAC-2025-001
-        existe:
-          type: boolean
-          example: true
-        estado:
-          type: string
-          example: ENVIADA
-        mensaje:
-          type: string
-          example: Datos y estado de la factura devueltos correctamente.
-
     CrearDocumentoPagoRequest:
       type: object
       properties:
@@ -2499,23 +2240,6 @@ components:
           type: string
           format: date
           example: "2026-03-16"
-
-    NotificacionCobroRequest:
-      type: object
-      properties:
-        destinatario:
-          type: string
-          format: email
-          example: empresa@correo.com
-        mensaje:
-          type: string
-          example: Se ha generado el justificante de cobro de la factura FAC-2025-001.
-        tipoNotificacion:
-          type: string
-          enum:
-            - INCIDENCIA
-            - JUSTIFICANTE
-          example: JUSTIFICANTE
 
     CalcularEstadisticasRequest:
       type: object
