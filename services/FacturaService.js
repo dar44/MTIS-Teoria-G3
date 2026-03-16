@@ -111,10 +111,34 @@ const crearFactura = ({ facturaCreateRequest }) => new Promise(
   },
 );
 
+/**
+* Crear factura rectificativa
+* Crea y persiste una nueva factura rectificativa en la base de datos,
+* vinculada a la factura original que se desea subsanar.
+*
+* facturaRectificativaCreateRequest FacturaRectificativaCreateRequest
+* returns FacturaRectificativaResponse
+* */
+const crearFacturaRectificativa = ({ facturaRectificativaCreateRequest }) => new Promise(
+  async (resolve, reject) => {
+    try {
+      resolve(Service.successResponse({
+        facturaRectificativaCreateRequest,
+      }, 201));
+    } catch (e) {
+      reject(Service.rejectResponse(
+        e.message || 'Invalid input',
+        e.status || 405,
+      ));
+    }
+  },
+);
+
 module.exports = {
   actualizarEstadoFactura,
   consultarExistenciaFactura,
   consultarFacturaDetalle,
   consultarEstadoFactura,
   crearFactura,
+  crearFacturaRectificativa,
 };

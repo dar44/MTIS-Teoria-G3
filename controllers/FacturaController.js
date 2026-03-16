@@ -28,6 +28,10 @@ const crearFactura = async (request, response) => {
   await Controller.handleRequest(request, response, service.crearFactura);
 };
 
+const crearFacturaRectificativa = async (request, response) => {
+  await Controller.handleRequest(request, response, service.crearFacturaRectificativa);
+};
+
 
 module.exports = {
   actualizarEstadoFactura,
@@ -35,4 +39,5 @@ module.exports = {
   consultarFacturaDetalle,
   consultarEstadoFactura,
   crearFactura,
+  crearFacturaRectificativa,
 };

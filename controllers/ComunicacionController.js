@@ -13,6 +13,12 @@ const enviarComunicacion = async (request, response) => {
 };
 
 
+const notificarSubsanacion = async (request, response) => {
+  await Controller.handleRequest(request, response, service.notificarSubsanacion);
+};
+
+
 module.exports = {
   enviarComunicacion,
+  notificarSubsanacion,
 };

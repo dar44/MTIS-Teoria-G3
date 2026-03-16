@@ -17,7 +17,13 @@ const generarXmlFactura = async (request, response) => {
 };
 
 
+const almacenarDocumentosRed = async (request, response) => {
+  await Controller.handleRequest(request, response, service.almacenarDocumentosRed);
+};
+
+
 module.exports = {
+  almacenarDocumentosRed,
   generarPdfFactura,
   generarXmlFactura,
 };

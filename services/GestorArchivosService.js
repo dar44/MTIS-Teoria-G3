@@ -44,7 +44,31 @@ const generarXmlFactura = ({ idFactura }) => new Promise(
   },
 );
 
+/**
+* Almacenar documentos en directorio de red
+* Guarda los documentos generados (XML y PDF) de una factura en un
+* directorio de red compartido.
+*
+* idFactura Long Identificador único de la factura
+* returns AlmacenamientoRedResponse
+* */
+const almacenarDocumentosRed = ({ idFactura }) => new Promise(
+  async (resolve, reject) => {
+    try {
+      resolve(Service.successResponse({
+        idFactura,
+      }));
+    } catch (e) {
+      reject(Service.rejectResponse(
+        e.message || 'Invalid input',
+        e.status || 405,
+      ));
+    }
+  },
+);
+
 module.exports = {
+  almacenarDocumentosRed,
   generarPdfFactura,
   generarXmlFactura,
 };

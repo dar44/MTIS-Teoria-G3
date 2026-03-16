@@ -203,12 +203,60 @@ async function registrarErrorAuditoria(errorData) {
     };
 }
 
+/**
+ * Crea una factura rectificativa vinculada a la factura original
+ * Devuelve el objeto con el id insertado
+ */
+async function crearFacturaRectificativa(factura) {
+    const sql = `
+    INSERT INTO facturas
+    (
+      empresa_id,
+      numero_factura,
+      base_imponible,
+      iva,
+      moneda,
+      tipo,
+      estado,
+      fecha_emision,
+      fecha_desde_facturacion,
+      fecha_hasta_facturacion,
+      factura_original_id,
+      motivo_rectificacion
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+    const params = [
+        factura.empresaId,
+        factura.numeroFactura,
+        factura.baseImponible,
+        factura.iva,
+        factura.moneda,
+        'RECTIFICATIVA',
+        'VALIDA',
+        factura.fechaEmision,
+        factura.fechaDesdeFacturacion || null,
+        factura.fechaHastaFacturacion || null,
+        factura.idFacturaOriginal,
+        factura.motivoRectificacion || null
+    ];
+
+    const result = await ejecutarQuery(sql, params);
+
+    return {
+        idFacturaRectificativa: result.insertId,
+        ...factura
+    };
+}
+
 module.exports = {
     connection,
     ejecutarQuery,
     obtenerRestKey,
     buscarEmpresaPorEmail,
     crearFactura,
+    crearFacturaRectificativa,
     obtenerFacturaPorId,
     obtenerFacturaPorNumero,
     obtenerEstadoFacturaPorId,
