@@ -903,6 +903,77 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: AuditoriaController
 
+  # ── Flujo de Subsanación (Servicio de Tarea) ──
+
+  /flujo-subsanacion/iniciar:
+    post:
+      tags:
+        - FlujoSubsanacion
+      summary: Iniciar flujo de subsanación de factura
+      description: |
+        Inicia el proceso completo de subsanación de una factura con errores.
+        El flujo valida la WSKey, comprueba la existencia de la factura original,
+        verifica que su estado permita subsanación, crea una factura rectificativa,
+        genera los documentos XML y PDF, los almacena en el directorio de red,
+        actualiza el estado de la factura original a SUBSANADA y notifica
+        a la empresa y a la Agencia Tributaria.
+      operationId: iniciarFlujoSubsanacion
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubsanacionRequest"
+      responses:
+        "200":
+          description: Flujo de subsanación completado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcesoSubsanacionResponse"
+        "400":
+          description: Datos de entrada inválidos o la factura no es subsanable
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no válida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura original no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error técnico durante el flujo de subsanación
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoSubsanacionController
+
   # ── Flujo de Anulación (Servicio de Tarea – Sergio Mínguez) ──
 
   /flujo-anulacion/iniciar:
@@ -1033,77 +1104,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: ValidacionController
-
-  # ── Flujo de Subsanación (Servicio de Tarea) ──
-
-  /flujo-subsanacion/iniciar:
-    post:
-      tags:
-        - FlujoSubsanacion
-      summary: Iniciar flujo de subsanación de factura
-      description: |
-        Inicia el proceso completo de subsanación de una factura con errores.
-        El flujo valida la WSKey, comprueba la existencia de la factura original,
-        verifica que su estado permita subsanación, crea una factura rectificativa,
-        genera los documentos XML y PDF, los almacena en el directorio de red,
-        actualiza el estado de la factura original a SUBSANADA y notifica
-        a la empresa y a la Agencia Tributaria.
-      operationId: iniciarFlujoSubsanacion
-      parameters:
-        - $ref: "#/components/parameters/WSKey"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SubsanacionRequest"
-      responses:
-        "200":
-          description: Flujo de subsanación completado correctamente
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProcesoSubsanacionResponse"
-        "400":
-          description: Datos de entrada inválidos o la factura no es subsanable
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: WSKey no válida
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Factura original no encontrada
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Error técnico durante el flujo de subsanación
-          headers:
-            salida:
-              $ref: "#/components/headers/salidaHeader"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-      x-swagger-router-controller: FlujoSubsanacionController
 
   # ── Factura Rectificativa (Servicio de Entidad) ──
 
