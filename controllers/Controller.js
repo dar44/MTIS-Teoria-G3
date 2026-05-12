@@ -25,8 +25,8 @@ class Controller {
       response.json(error.error);
     } else {
       response.json({
-        error: error.message || 'Error interno del servidor',
-        salida: error.salida || 'Se ha producido un error'
+        error: error.error || error.message || 'Error interno del servidor',
+        salida: error.salida || error.error || 'Se ha producido un error'
       });
     }
   }
@@ -93,6 +93,16 @@ class Controller {
         requestParams[param.name] = request.headers[param.name.toLowerCase()];
       }
     });
+
+    // Fallback: extraer WSKey directamente del header si no se resolvió via OpenAPI schema
+    if (!requestParams.WSKey && request.headers['wskey']) {
+      requestParams.WSKey = request.headers['wskey'];
+    }
+
+    // Fallback: extraer body directamente si no se resolvió via OpenAPI schema
+    if (!requestParams.body && request.body && Object.keys(request.body).length > 0) {
+      requestParams.body = request.body;
+    }
 
     return requestParams;
   }

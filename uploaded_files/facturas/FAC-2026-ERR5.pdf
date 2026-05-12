@@ -1,0 +1,22 @@
+════════════════════════════════════════════════
+         FACTURA ELECTRÓNICA
+════════════════════════════════════════════════
+
+  Factura Nº:      FAC-2026-ERR5
+  ID Factura:      6
+  Fecha emisión:   2026-05-12T14:30:50Z
+
+  ── DATOS DE LA EMPRESA ──
+  Nombre:          Mi Empresa S.L.
+  NIF:             B12345678
+  Email:           empresa@correo.com
+  IBAN:            ES9121000418450200051332
+  Dirección:       Calle Mayor 1, Alicante
+
+  ── DETALLE DE FACTURA ──
+  Base imponible:  1250.75 EUR
+  IVA:             21%
+  Total:           1513.41 EUR
+  Tipo:            ORDINARIA
+
+════════════════════════════════════════════════

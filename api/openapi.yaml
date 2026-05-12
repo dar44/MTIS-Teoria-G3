@@ -10,6 +10,8 @@ info:
     url: https://unlicense.org/
 
 servers:
+  - url: http://localhost:7777
+    description: Servidor local
   - url: https://dev.facturacion-g3.local
     description: Servidor de desarrollo
 
