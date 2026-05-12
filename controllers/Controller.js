@@ -86,7 +86,9 @@ class Controller {
 
     parameters.forEach((param) => {
       if (param.in === 'path') {
-        requestParams[param.name] = request.openapi.pathParams[param.name];
+        requestParams[param.name] =
+          (request.openapi?.pathParams && request.openapi.pathParams[param.name])
+          || (request.params && request.params[param.name]);
       } else if (param.in === 'query') {
         requestParams[param.name] = request.query[param.name];
       } else if (param.in === 'header') {
@@ -102,6 +104,24 @@ class Controller {
     // Fallback: extraer body directamente si no se resolvió via OpenAPI schema
     if (!requestParams.body && request.body && Object.keys(request.body).length > 0) {
       requestParams.body = request.body;
+    }
+
+    // Fallback: extraer pathParams directamente cuando los $ref no se resuelven en schema.parameters
+    if (request.openapi?.pathParams) {
+      Object.keys(request.openapi.pathParams).forEach((key) => {
+        if (!requestParams[key]) {
+          requestParams[key] = request.openapi.pathParams[key];
+        }
+      });
+    }
+
+    // Fallback: extraer path params directamente de Express si no se resolvieron via OpenAPI
+    if (request.params) {
+      Object.keys(request.params).forEach((key) => {
+        if (!requestParams[key] && request.params[key]) {
+          requestParams[key] = request.params[key];
+        }
+      });
     }
 
     return requestParams;

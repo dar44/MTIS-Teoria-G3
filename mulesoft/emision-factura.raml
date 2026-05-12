@@ -1,0 +1,185 @@
+#%RAML 1.0
+title: API REST - Facturación Electrónica G3 (Emisión)
+version: 1.0.0
+baseUri: http://localhost:9092/api
+mediaType: application/json
+
+types:
+  EmpresaInput:
+    type: object
+    properties:
+      email:
+        type: string
+        required: true
+        example: empresa@correo.com
+      nombre:
+        type: string
+        required: true
+        example: Mi Empresa S.L.
+      nif:
+        type: string
+        required: true
+        example: B12345678
+      iban:
+        type: string
+        required: true
+        example: ES9121000418450200051332
+      direccion:
+        type: string
+        required: false
+        example: Calle Mayor 1, Alicante
+
+  FacturaInput:
+    type: object
+    properties:
+      numeroFactura:
+        type: string
+        required: true
+        example: FAC-2025-001
+      baseImponible:
+        type: number
+        required: true
+        example: 1250.75
+      iva:
+        type: number
+        required: true
+        example: 0.21
+      moneda:
+        type: string
+        required: true
+        example: EUR
+      tipo:
+        type: string
+        required: true
+        example: ORDINARIA
+      estado:
+        type: string
+        required: false
+        example: VALIDA
+      fechaEmision:
+        type: string
+        required: true
+        example: "2025-05-10T14:30:50Z"
+      fechaDesdeFacturacion:
+        type: string
+        required: false
+        example: "2025-04-01"
+      fechaHastaFacturacion:
+        type: string
+        required: false
+        example: "2025-05-01"
+
+  EmisionFacturaRequest:
+    type: object
+    properties:
+      empresa:
+        type: EmpresaInput
+        required: true
+      factura:
+        type: FacturaInput
+        required: true
+
+  ProcesoEmisionResponse:
+    type: object
+    properties:
+      idFactura:
+        type: integer
+        example: 123
+      numeroFactura:
+        type: string
+        example: FAC-2025-001
+      estadoFinal:
+        type: string
+        example: ENVIADA
+      mensaje:
+        type: string
+        example: Proceso de emisión completado correctamente
+
+  ErrorResponse:
+    type: object
+    properties:
+      codigo:
+        type: string
+        example: ERR-400
+      mensaje:
+        type: string
+        example: Los datos introducidos no son válidos
+      detalle:
+        type: string
+        example: El campo fechaEmision es obligatorio
+
+/flujo-emision:
+  /iniciar:
+    post:
+      displayName: Iniciar flujo de emisión de factura
+      description: |
+        Inicia el proceso completo de emisión de factura: valida WSKey, valida datos de entrada,
+        consulta empresa, verifica coincidencia de datos, crea factura, genera XML/PDF,
+        envía documentación y notifica el resultado.
+      headers:
+        WSKey:
+          type: string
+          required: true
+          description: Clave de autenticación WSKey
+          example: MI_CLAVE_SECRETA_G3
+      body:
+        application/json:
+          type: EmisionFacturaRequest
+          example:
+            empresa:
+              email: empresa@correo.com
+              nombre: Mi Empresa S.L.
+              nif: B12345678
+              iban: ES9121000418450200051332
+              direccion: Calle Mayor 1, Alicante
+            factura:
+              numeroFactura: FAC-2025-001
+              baseImponible: 1250.75
+              iva: 0.21
+              moneda: EUR
+              tipo: ORDINARIA
+              fechaEmision: "2025-05-10T14:30:50Z"
+              fechaDesdeFacturacion: "2025-04-01"
+              fechaHastaFacturacion: "2025-05-01"
+      responses:
+        200:
+          body:
+            application/json:
+              type: ProcesoEmisionResponse
+              example:
+                idFactura: 1
+                numeroFactura: FAC-2025-001
+                estadoFinal: ENVIADA
+                mensaje: Proceso de emisión completado correctamente
+        400:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-400
+                mensaje: Datos de entrada inválidos
+                detalle: Campos faltantes - nombre, nif
+        401:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-401
+                mensaje: WSKey no válida
+                detalle: Acceso no autorizado
+        404:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-404
+                mensaje: Empresa no registrada
+                detalle: La empresa con email noexiste@empresa.com no está registrada
+        500:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-500
+                mensaje: Error técnico en el flujo
+                detalle: Error al generar el XML de la factura

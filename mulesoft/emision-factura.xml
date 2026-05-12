@@ -1,0 +1,411 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       CONFIGURACIONES
+       ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Listener MuleSoft (puerto del orquestador) -->
+  <http:listener-config name="emision-factura-httpListenerConfig">
+    <http:listener-connection host="0.0.0.0" port="9092"/>
+  </http:listener-config>
+
+  <!-- Apikit config (requiere el RAML generado desde el OpenAPI) -->
+  <apikit:config name="emision-factura-config"
+                 api="emision-factura.raml"
+                 outboundHeadersMapName="outboundHeaders"
+                 httpStatusVarName="httpStatus"/>
+
+  <!-- Conexión directa a MySQL (para validación WSKey y consulta empresa) -->
+  <db:config name="Database_Config" doc:name="Database Config">
+    <db:my-sql-connection host="localhost" port="3306"
+                          user="root" password="root"
+                          database="facturacion">
+      <db:connection-properties>
+        <db:connection-property key="serverTimezone" value="UTC"/>
+      </db:connection-properties>
+    </db:my-sql-connection>
+  </db:config>
+
+  <!-- Conexión HTTP al API REST Node.js (puerto 7777) -->
+  <http:request-config name="REST_API_Config" doc:name="REST API Node.js">
+    <http:request-connection host="localhost" port="7777"/>
+  </http:request-config>
+
+  <!-- Conexión SMTP para notificaciones de error -->
+  <email:smtp-config name="Email_SMTP" doc:name="Email SMTP">
+    <email:smtp-connection host="localhost" port="2525"/>
+  </email:smtp-config>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FLOW PRINCIPAL - Router APIkit
+       ═══════════════════════════════════════════════════════════════ -->
+  <flow name="emision-factura-main">
+    <http:listener config-ref="emision-factura-httpListenerConfig" path="/api/*">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+    <!-- Cabeceras CORS para TODAS las respuestas -->
+    <ee:transform doc:name="Set CORS Headers">
+      <ee:variables>
+        <ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0 output application/java --- {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept"
+        }]]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+    <choice doc:name="CORS Preflight">
+      <when expression="#[attributes.method == 'OPTIONS']">
+        <ee:transform doc:name="CORS Response">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+            <ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0 output application/java --- {
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept"
+            }]]></ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <otherwise>
+        <apikit:router config-ref="emision-factura-config"/>
+      </otherwise>
+    </choice>
+    <error-handler>
+      <on-error-propagate type="APIKIT:BAD_REQUEST">
+        <ee:transform doc:name="400 Bad Request">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Bad request"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+      <on-error-propagate type="APIKIT:NOT_FOUND">
+        <ee:transform doc:name="404 Not Found">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Resource not found"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+      <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+        <ee:transform doc:name="405 Method Not Allowed">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Method not allowed"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">405</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+      <on-error-propagate type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+        <ee:transform doc:name="415 Unsupported">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Unsupported media type"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">415</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+      <on-error-propagate type="APIKIT:NOT_IMPLEMENTED">
+        <ee:transform doc:name="501 Not Implemented">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Not Implemented"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">501</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+  <!-- Consola APIkit -->
+  <flow name="emision-factura-console">
+    <http:listener config-ref="emision-factura-httpListenerConfig" path="/console/*">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+    <apikit:console config-ref="emision-factura-config"/>
+    <error-handler>
+      <on-error-propagate type="APIKIT:NOT_FOUND">
+        <ee:transform>
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {message: "Resource not found"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FLUJO DE EMISIÓN DE FACTURA (BPMN completo)
+       ═══════════════════════════════════════════════════════════════ -->
+  <flow name="post:\flujo-emision\iniciar:application\json:emision-factura-config">
+
+    <!-- ─── Transformar payload de entrada ─── -->
+    <ee:transform doc:name="Transform payload → Object">
+      <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0 output application/java --- payload]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+
+    <!-- Guardar datos de entrada y WSKey -->
+    <set-variable variableName="datos_entrada" value="#[payload]" doc:name="Set datos_entrada"/>
+    <set-variable variableName="InputWSKey" value="#[attributes.headers.WSKey]" doc:name="Set InputWSKey"/>
+
+    <!-- ─── PASO 1: Validar WSKey (consulta directa a BD) ─── -->
+    <db:select doc:name="Obtener WSKey de BD" config-ref="Database_Config">
+      <db:sql><![CDATA[SELECT valor FROM parametros WHERE clave = 'rest_key']]></db:sql>
+    </db:select>
+    <set-variable value="#[payload[0].valor]" variableName="RealWSKey" doc:name="Set RealWSKey"/>
+
+    <choice doc:name="¿WSKey válida?">
+      <!-- ✖ WSKey inválida → registrar intento no autorizado y finalizar -->
+      <when expression="#[vars.InputWSKey != vars.RealWSKey]">
+
+        <!-- Registrar intento no autorizado en auditoría -->
+        <db:insert doc:name="Registrar intento no autorizado" config-ref="Database_Config">
+          <db:sql><![CDATA[INSERT INTO auditoria_eventos (tipo_evento, descripcion, fecha, origen) VALUES (:tipo, :desc, NOW(), 'mulesoft-emision')]]></db:sql>
+          <db:input-parameters><![CDATA[#[{
+            'tipo': 'INTENTO_NO_AUTORIZADO',
+            'desc': 'WSKey inválida en flujo de emisión. Email: ' ++ (vars.datos_entrada.empresa.email default 'desconocido')
+          }]]]></db:input-parameters>
+        </db:insert>
+
+        <ee:transform doc:name="Respuesta WSKey inválida">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {error: "WSKey inválida", salida: "Acceso no autorizado"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">403</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+        <raise-error type="ACCESS:UNAUTHORIZED" description="WSKey inválida"/>
+      </when>
+
+      <!-- ✔ WSKey válida → continuar flujo -->
+      <otherwise>
+
+        <!-- ─── PASO 3: Consultar empresa en BD ─── -->
+        <db:select doc:name="Buscar empresa por email" config-ref="Database_Config">
+          <db:sql><![CDATA[SELECT * FROM empresas WHERE email = :email]]></db:sql>
+          <db:input-parameters><![CDATA[#[{ email: vars.datos_entrada.empresa.email }]]]></db:input-parameters>
+        </db:select>
+        <set-variable value="#[payload]" variableName="empresa_encontrada" doc:name="Set empresa_encontrada"/>
+
+        <choice doc:name="¿Empresa registrada?">
+          <!-- ✖ Empresa NO registrada → notificar y finalizar -->
+          <when expression="#[isEmpty(vars.empresa_encontrada)]">
+
+            <!-- Notificar empresa no registrada via REST -->
+            <http:request method="POST" config-ref="REST_API_Config" path="/comunicaciones/enviar" doc:name="Notificar empresa no registrada">
+              <http:body><![CDATA[#[%dw 2.0 output application/json ---
+              {
+                destinatario: vars.datos_entrada.empresa.email,
+                asunto: "Empresa no registrada",
+                cuerpo: "Estimado/a " ++ vars.datos_entrada.empresa.nombre ++ ",\n\nSu empresa no está registrada en el sistema de facturación electrónica.\nContacte con el administrador.\n\nSistema de Facturación G3"
+              }]]]></http:body>
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+            </http:request>
+
+            <ee:transform doc:name="Respuesta empresa no registrada">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {error: "Empresa no registrada", mensaje: "Se ha notificado por email a " ++ vars.datos_entrada.empresa.email}]]></ee:set-payload>
+              </ee:message>
+              <ee:variables>
+                <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+          </when>
+
+          <!-- ✔ Empresa registrada → continuar -->
+          <otherwise>
+
+            <!-- ─── PASO 5: Verificar coincidencia de datos ─── -->
+            <ee:transform doc:name="Determinar VALIDA/INVALIDA">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0 output application/java ---
+                if (
+                  vars.datos_entrada.empresa.nombre == vars.empresa_encontrada[0].nombre and
+                  vars.datos_entrada.empresa.nif == vars.empresa_encontrada[0].nif and
+                  vars.datos_entrada.empresa.iban == vars.empresa_encontrada[0].iban
+                ) "VALIDA" else "INVALIDA"]]></ee:set-payload>
+              </ee:message>
+            </ee:transform>
+            <set-variable variableName="estadoFactura" value="#[payload]" doc:name="Set estadoFactura"/>
+
+            <!-- ─── PASO 6: Crear factura via REST ─── -->
+            <http:request method="POST" config-ref="REST_API_Config" path="/facturas" doc:name="Crear factura en BD">
+              <http:body><![CDATA[#[%dw 2.0 output application/json ---
+              {
+                empresaId: vars.empresa_encontrada[0].id as Number,
+                numeroFactura: vars.datos_entrada.factura.numeroFactura as String,
+                baseImponible: vars.datos_entrada.factura.baseImponible as Number,
+                iva: vars.datos_entrada.factura.iva as Number,
+                moneda: vars.datos_entrada.factura.moneda as String,
+                tipo: vars.datos_entrada.factura.tipo as String,
+                estado: vars.estadoFactura as String,
+                fechaEmision: vars.datos_entrada.factura.fechaEmision as String,
+                (fechaDesdeFacturacion: vars.datos_entrada.factura.fechaDesdeFacturacion as String) if (vars.datos_entrada.factura.fechaDesdeFacturacion != null),
+                (fechaHastaFacturacion: vars.datos_entrada.factura.fechaHastaFacturacion as String) if (vars.datos_entrada.factura.fechaHastaFacturacion != null)
+              }]]]></http:body>
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+            </http:request>
+
+            <!-- Guardar el ID de la factura creada -->
+            <ee:transform doc:name="Extraer idFactura">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0 output application/java --- payload]]></ee:set-payload>
+              </ee:message>
+            </ee:transform>
+            <set-variable variableName="idFactura" value="#[payload.idFactura]" doc:name="Set idFactura"/>
+
+            <!-- ─── PASO 7: Generar XML (con reintentos) ─── -->
+            <set-payload value="{}" doc:name="Reset payload (XML)"/>
+            <until-successful maxRetries="5" millisBetweenRetries="1000" doc:name="Generar XML">
+              <http:request method="POST" config-ref="REST_API_Config"
+                            path="#['/gestor-archivos/generar-xml/' ++ vars.idFactura]"
+                            doc:name="REST generar XML">
+                <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+              </http:request>
+            </until-successful>
+
+            <!-- ─── PASO 8: Generar PDF (con reintentos) ─── -->
+            <set-payload value="{}" doc:name="Reset payload (PDF)"/>
+            <until-successful maxRetries="5" millisBetweenRetries="1000" doc:name="Generar PDF">
+              <http:request method="POST" config-ref="REST_API_Config"
+                            path="#['/gestor-archivos/generar-pdf/' ++ vars.idFactura]"
+                            doc:name="REST generar PDF">
+                <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+              </http:request>
+            </until-successful>
+
+            <!-- ─── PASO 9: Enviar a Agencia Tributaria ─── -->
+            <set-payload value="{}" doc:name="Reset payload (Envío AT)"/>
+            <http:request method="POST" config-ref="REST_API_Config" path="/comunicaciones/enviar" doc:name="Enviar a Agencia Tributaria">
+              <http:body><![CDATA[#[%dw 2.0 output application/json ---
+              {
+                destinatario: "agencia@tributaria.es",
+                asunto: "Factura electrónica " ++ vars.datos_entrada.factura.numeroFactura ++ " - " ++ vars.datos_entrada.empresa.nombre,
+                cuerpo: "Factura electrónica " ++ vars.datos_entrada.factura.numeroFactura ++ " emitida por " ++ vars.datos_entrada.empresa.nombre ++ " (NIF: " ++ vars.datos_entrada.empresa.nif ++ ").\n\nDocumentos adjuntos:\n- " ++ vars.datos_entrada.factura.numeroFactura ++ ".xml\n- " ++ vars.datos_entrada.factura.numeroFactura ++ ".pdf"
+              }]]]></http:body>
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+            </http:request>
+
+            <!-- ─── PASO 10: Actualizar estado y notificar empresa ─── -->
+            <set-payload value="{}" doc:name="Reset payload (Actualizar)"/>
+            <http:request method="POST" config-ref="REST_API_Config"
+                          path="#['/facturas/' ++ vars.idFactura ++ '/actualizar-estado']"
+                          doc:name="Actualizar estado a ENVIADA">
+              <http:body><![CDATA[#[%dw 2.0 output application/json ---
+              {
+                nuevoEstado: if (vars.estadoFactura == "VALIDA") "ENVIADA" else vars.estadoFactura,
+                motivo: if (vars.estadoFactura == "VALIDA") "Enviada correctamente a la Agencia Tributaria" else "Datos de empresa no coinciden con los registrados"
+              }]]]></http:body>
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+            </http:request>
+
+            <!-- Notificar a la empresa el resultado -->
+            <set-payload value="{}" doc:name="Reset payload (Notificación)"/>
+            <http:request method="POST" config-ref="REST_API_Config" path="/comunicaciones/enviar" doc:name="Notificar empresa">
+              <http:body><![CDATA[#[%dw 2.0 output application/json ---
+              {
+                destinatario: vars.datos_entrada.empresa.email,
+                asunto: "Factura " ++ vars.datos_entrada.factura.numeroFactura ++ " - Resultado del proceso",
+                cuerpo: "Estimado/a " ++ vars.datos_entrada.empresa.nombre ++ ",\n\nSu factura " ++ vars.datos_entrada.factura.numeroFactura ++ " ha sido procesada y enviada a la Agencia Tributaria.\n\nEstado: " ++ (if (vars.estadoFactura == "VALIDA") "ENVIADA" else "INVALIDA") ++ "\n\nSistema de Facturación G3"
+              }]]]></http:body>
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+            </http:request>
+
+            <!-- Respuesta final exitosa -->
+            <ee:transform doc:name="Respuesta éxito">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
+                {
+                  mensaje: "Emisión de factura realizada con éxito.",
+                  idFactura: vars.idFactura,
+                  estadoFinal: if (vars.estadoFactura == "VALIDA") "ENVIADA" else "INVALIDA"
+                }]]></ee:set-payload>
+              </ee:message>
+            </ee:transform>
+
+          </otherwise>
+        </choice>
+      </otherwise>
+    </choice>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         MANEJO GLOBAL DE ERRORES DEL FLUJO
+         ═══════════════════════════════════════════════════════════ -->
+    <error-handler>
+      <on-error-propagate enableNotifications="true" logException="true" type="ANY" doc:name="On Error Propagate">
+        <!-- Registrar error en auditoría (BD directa) -->
+        <db:insert doc:name="Registrar error en auditoría" config-ref="Database_Config">
+          <db:sql><![CDATA[INSERT INTO auditoria_errores (tipo_error, descripcion, fecha, origen) VALUES (:tipo, :desc, NOW(), 'mulesoft-emision')]]></db:sql>
+          <db:input-parameters><![CDATA[#[{
+            'tipo': (error.errorType.identifier default 'ERROR_DESCONOCIDO'),
+            'desc': (error.description default 'Error no especificado')[0 to 254]
+          }]]]></db:input-parameters>
+        </db:insert>
+
+        <!-- Enviar email de error via FakeSMTP -->
+        <email:send config-ref="Email_SMTP"
+                    fromAddress="facturacion@sistema-g3.com"
+                    subject="Error durante el flujo de emisión de factura"
+                    doc:name="Email error">
+          <email:to-addresses>
+            <email:to-address value="#[vars.datos_entrada.empresa.email default 'admin@sistema-g3.com']"/>
+          </email:to-addresses>
+          <email:body contentTransferEncoding="8BIT">
+            <email:content><![CDATA[Se ha producido un error durante el flujo de emisión de factura. Descripción: #[error.description default 'Error desconocido']]]></email:content>
+          </email:body>
+        </email:send>
+
+        <!-- Respuesta de error -->
+        <ee:transform doc:name="Respuesta error">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {error: "Ha ocurrido un error durante el flujo de emisión de factura", detalle: error.description default ""}]]></ee:set-payload>
+          </ee:message>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+
+  </flow>
+</mule>

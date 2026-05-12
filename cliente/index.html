@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cliente Emisión de Facturas - G3</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">📄</span>
+        <h1>Facturación Electrónica G3</h1>
+      </div>
+      <p class="subtitle">Cliente de pruebas — Flujo de Emisión BPMN</p>
+    </header>
+
+    <main class="main">
+      <!-- Config Panel -->
+      <section class="card config-card">
+        <h2>⚙️ Configuración</h2>
+        <div class="form-row">
+          <div class="field">
+            <label for="endpoint">Endpoint destino</label>
+            <select id="endpoint">
+              <option value="http://localhost:7777/proxy/mule/flujo-emision/iniciar">MuleSoft via proxy (puerto 9092)</option>
+              <option value="http://localhost:7777/flujo-emision/iniciar">Node.js directo (puerto 7777)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="wskey">WSKey</label>
+            <input type="text" id="wskey" value="prueba" placeholder="Introduce la WSKey">
+          </div>
+        </div>
+      </section>
+
+      <div class="two-col">
+        <!-- Empresa -->
+        <section class="card">
+          <h2>🏢 Datos Empresa</h2>
+          <div class="field">
+            <label for="emp-email">Email *</label>
+            <input type="email" id="emp-email" value="empresa@correo.com">
+          </div>
+          <div class="field">
+            <label for="emp-nombre">Nombre *</label>
+            <input type="text" id="emp-nombre" value="Mi Empresa S.L.">
+          </div>
+          <div class="field">
+            <label for="emp-nif">NIF *</label>
+            <input type="text" id="emp-nif" value="B12345678">
+          </div>
+          <div class="field">
+            <label for="emp-iban">IBAN *</label>
+            <input type="text" id="emp-iban" value="ES9121000418450200051332">
+          </div>
+          <div class="field">
+            <label for="emp-direccion">Dirección</label>
+            <input type="text" id="emp-direccion" placeholder="Opcional">
+          </div>
+        </section>
+
+        <!-- Factura -->
+        <section class="card">
+          <h2>🧾 Datos Factura</h2>
+          <div class="field">
+            <label for="fac-numero">Nº Factura *</label>
+            <input type="text" id="fac-numero" value="FAC-2026-MULE01">
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="fac-base">Base Imponible *</label>
+              <input type="number" id="fac-base" value="1250.75" step="0.01">
+            </div>
+            <div class="field">
+              <label for="fac-iva">IVA *</label>
+              <select id="fac-iva">
+                <option value="0.21" selected>21%</option>
+                <option value="0.10">10%</option>
+                <option value="0.04">4%</option>
+                <option value="0">0% (Exento)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="fac-moneda">Moneda *</label>
+              <select id="fac-moneda">
+                <option value="EUR" selected>EUR</option>
+                <option value="USD">USD</option>
+                <option value="GBP">GBP</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fac-tipo">Tipo *</label>
+              <select id="fac-tipo">
+                <option value="ORDINARIA" selected>ORDINARIA</option>
+                <option value="RECTIFICATIVA">RECTIFICATIVA</option>
+                <option value="RECAPITULATIVA">RECAPITULATIVA</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="fac-fecha">Fecha Emisión *</label>
+            <input type="datetime-local" id="fac-fecha">
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="fac-desde">Desde Facturación</label>
+              <input type="date" id="fac-desde">
+            </div>
+            <div class="field">
+              <label for="fac-hasta">Hasta Facturación</label>
+              <input type="date" id="fac-hasta">
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Botones -->
+      <div class="actions">
+        <button id="btn-enviar" class="btn btn-primary" onclick="enviarEmision()">
+          🚀 Iniciar Flujo de Emisión
+        </button>
+        <button class="btn btn-secondary" onclick="testWSKeyInvalida()">
+          🔒 Test WSKey Inválida
+        </button>
+        <button class="btn btn-secondary" onclick="testEmpresaNoRegistrada()">
+          🏢 Test Empresa No Registrada
+        </button>
+        <button class="btn btn-outline" onclick="limpiarResultado()">
+          🗑️ Limpiar
+        </button>
+      </div>
+
+      <!-- Timeline del flujo -->
+      <section class="card" id="timeline-section" style="display:none">
+        <h2>📋 Pasos del Flujo BPMN</h2>
+        <div id="timeline" class="timeline"></div>
+      </section>
+
+      <!-- Resultado -->
+      <section class="card" id="resultado-section" style="display:none">
+        <h2>📨 Respuesta del Servidor</h2>
+        <div class="result-header">
+          <span id="status-badge" class="badge"></span>
+          <span id="response-time" class="response-time"></span>
+        </div>
+        <pre id="resultado" class="code-block"></pre>
+      </section>
+
+      <!-- Curl generado -->
+      <section class="card" id="curl-section" style="display:none">
+        <h2>🔗 Comando cURL equivalente</h2>
+        <pre id="curl-cmd" class="code-block curl"></pre>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>MTIS — Práctica Integración G3 · MuleSoft + Node.js</p>
+    </footer>
+  </div>
+
+  <!-- Overlay loading -->
+  <div id="overlay" class="overlay" style="display:none">
+    <div class="spinner"></div>
+    <p>Ejecutando flujo BPMN...</p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
