@@ -19,16 +19,27 @@ class Controller {
   }
 
   static sendError(response, error) {
-    response.status(error.status || error.code || 500);
+    const status = error && (error.status || error.code) ? (error.status || error.code) : 500;
+    response.status(status);
 
-    if (error.error instanceof Object) {
-      response.json(error.error);
+    // Normalize different error shapes into a consistent JSON payload
+    let payload = {};
+
+    if (error instanceof Error) {
+      payload.error = error.message || 'Error interno del servidor';
+      payload.salida = error.stack || null;
+    } else if (error && typeof error === 'object') {
+      if (error.error && typeof error.error === 'object') {
+        payload = error.error; // already a structured payload from Service.rejectResponse or similar
+      } else {
+        payload.error = error.error || error.message || JSON.stringify(error);
+        if (error.salida) payload.salida = error.salida;
+      }
     } else {
-      response.json({
-        error: error.error || error.message || 'Error interno del servidor',
-        salida: error.salida || error.error || 'Se ha producido un error'
-      });
+      payload.error = String(error) || 'Error interno del servidor';
     }
+
+    response.json(payload);
   }
 
   static collectFile(request, fieldName) {

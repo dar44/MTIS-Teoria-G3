@@ -3,7 +3,8 @@
 const mysql = require('mysql2');
 
 const connection = mysql.createConnection({
-    host: 'localhost',
+    host: '127.0.0.1',
+    port: 3307,
     user: 'root',
     password: 'root',
     database: 'facturacion'
@@ -204,6 +205,58 @@ async function registrarErrorAuditoria(errorData) {
 }
 
 /**
+ * Crea un documento de pago (registro de pago) en la BD
+ */
+async function crearDocumentoPago(pago) {
+    const sql = `
+    INSERT INTO pagos
+    (
+      factura_id,
+      importe,
+      metodo_pago,
+      referencia,
+      fecha_pago,
+      estado
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+
+    const params = [
+        pago.facturaId,
+        pago.importe,
+        pago.metodoPago || null,
+        pago.referencia || null,
+        pago.fechaPago || null,
+        pago.estado || 'PENDIENTE'
+    ];
+
+    const result = await ejecutarQuery(sql, params);
+
+    return {
+        idPago: result.insertId,
+        ...pago
+    };
+}
+
+/**
+ * Obtener documento de pago por id
+ */
+async function obtenerDocumentoPagoPorId(idPago) {
+    const sql = 'SELECT * FROM pagos WHERE id = ? LIMIT 1';
+    const results = await ejecutarQuery(sql, [idPago]);
+    return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * Listar pagos por factura
+ */
+async function listarPagosPorFactura(facturaId) {
+    const sql = 'SELECT * FROM pagos WHERE factura_id = ? ORDER BY creado_at DESC';
+    const results = await ejecutarQuery(sql, [facturaId]);
+    return results;
+}
+
+/**
  * Crea una factura rectificativa vinculada a la factura original
  * Devuelve el objeto con el id insertado
  */
@@ -263,4 +316,7 @@ module.exports = {
     actualizarEstadoFactura,
     registrarEventoAuditoria,
     registrarErrorAuditoria
+    ,crearDocumentoPago
+    ,obtenerDocumentoPagoPorId
+    ,listarPagosPorFactura
 };

@@ -14,7 +14,7 @@
         <span class="logo-icon">📄</span>
         <h1>Facturación Electrónica G3</h1>
       </div>
-      <p class="subtitle">Cliente de pruebas — Flujo de Emisión BPMN</p>
+      <p class="subtitle">Cliente operativo — Flujo de Emisión BPMN</p>
     </header>
 
     <main class="main">
@@ -67,7 +67,7 @@
           <h2>🧾 Datos Factura</h2>
           <div class="field">
             <label for="fac-numero">Nº Factura *</label>
-            <input type="text" id="fac-numero" value="FAC-2026-MULE01">
+            <input type="text" id="fac-numero" value="FAC-2026-001" placeholder="FAC-2026-001">
           </div>
           <div class="form-row">
             <div class="field">
@@ -124,11 +124,11 @@
         <button id="btn-enviar" class="btn btn-primary" onclick="enviarEmision()">
           🚀 Iniciar Flujo de Emisión
         </button>
-        <button class="btn btn-secondary" onclick="testWSKeyInvalida()">
-          🔒 Test WSKey Inválida
+          <button class="btn btn-secondary" onclick="testWSKeyInvalida()">
+          🔒 Validar WSKey inválida
         </button>
         <button class="btn btn-secondary" onclick="testEmpresaNoRegistrada()">
-          🏢 Test Empresa No Registrada
+          🏢 Validar empresa no registrada
         </button>
         <button class="btn btn-outline" onclick="limpiarResultado()">
           🗑️ Limpiar

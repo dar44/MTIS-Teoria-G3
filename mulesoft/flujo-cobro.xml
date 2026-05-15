@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+  <!-- Listener del orquestador Mule para flujo de cobro -->
+  <http:listener-config name="cobro-httpListenerConfig">
+    <http:listener-connection host="0.0.0.0" port="14102"/>
+  </http:listener-config>
+
+  <!-- Config HTTP al backend Node.js (tu API en 7777) -->
+  <http:request-config name="REST_API_COBRO_Config" doc:name="REST API Cobro">
+    <http:request-connection host="localhost" port="7777"/>
+  </http:request-config>
+
+  <!-- ========================================================
+       1) INICIAR COBRO (POST /api/cobros/iniciar)
+       Alineado con el diagrama:
+         - Recibir parametros de cobro
+         - Validar permisos del solicitante
+         - Validar consistencia de fechas
+         - Consultar existencia/estado de factura
+         - Aprobar por supervisor
+         - Calcular estadisticas de recaudacion
+         - Formatear documento de pago y guardar en BD
+         - Generar justificante y notificar
+       ======================================================== -->
+  <flow name="cobro-iniciar-main">
+    <http:listener config-ref="cobro-httpListenerConfig" path="/api/cobros/iniciar" allowedMethods="POST">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+
+    <!-- CORS -->
+    <ee:transform doc:name="Set CORS Headers">
+      <ee:variables>
+        <ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0
+output application/java
+--- {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept"
+}]]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+
+    <set-variable variableName="InputWSKey" value="#[attributes.headers.WSKey default attributes.headers.wskey default '']" doc:name="Set InputWSKey"/>
+    <set-variable variableName="datos_entrada" value="#[payload]" doc:name="Set datos_entrada"/>
+
+    <choice doc:name="Validar WSKey presente">
+      <when expression="#[isEmpty(vars.InputWSKey)]">
+        <ee:transform doc:name="WSKey faltante">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  error: "WSKey no proporcionada"
+}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <otherwise>
+
+        <!-- Paso 1: validar permisos del solicitante (segun diagrama) -->
+        <choice doc:name="Validar permisos del solicitante">
+          <when expression="#[(vars.datos_entrada.permisosSolicitante default true) == false]">
+            <ee:transform doc:name="Error permisos">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  error: "Permisos insuficientes para iniciar el cobro"
+}]]></ee:set-payload>
+              </ee:message>
+              <ee:variables>
+                <ee:set-variable variableName="httpStatus">403</ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+          </when>
+          <otherwise>
+
+            <!-- Paso 2: validar consistencia de fechas -->
+            <ee:transform doc:name="Evaluar fechas validas">
+              <ee:variables>
+                <ee:set-variable variableName="fechasValidas"><![CDATA[%dw 2.0
+output application/java
+var desdeRaw = vars.datos_entrada.fechaDesdeFacturacion default null
+var hastaRaw = vars.datos_entrada.fechaHastaFacturacion default null
+var desde = if (desdeRaw == null) null else (desdeRaw as Date {format: "yyyy-MM-dd"})
+var hasta = if (hastaRaw == null) null else (hastaRaw as Date {format: "yyyy-MM-dd"})
+--- (desde == null or hasta == null or desde <= hasta)]]></ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+
+            <choice doc:name="Fechas validas?">
+              <when expression="#[(vars.fechasValidas default false) == false]">
+                <ee:transform doc:name="Error fechas">
+                  <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  error: "Inconsistencia de fechas en la solicitud de cobro"
+}]]></ee:set-payload>
+                  </ee:message>
+                  <ee:variables>
+                    <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                  </ee:variables>
+                </ee:transform>
+              </when>
+              <otherwise>
+
+                <!-- Paso 3: consultar existencia y estado de la factura -->
+                <http:request method="GET" config-ref="REST_API_COBRO_Config" path="#['/facturas/' ++ (vars.datos_entrada.idFactura as String) ++ '/estado']" doc:name="Consultar estado factura">
+                  <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+                </http:request>
+                <set-variable variableName="estado_factura" value="#[payload.estado default payload.estadoFactura default null]" doc:name="Set estado_factura"/>
+
+                <choice doc:name="Factura existe y no cobrada?">
+                  <when expression="#[(vars.estado_factura default '') == 'COBRADA' or (vars.estado_factura default '') == 'ANULADA']">
+                    <!-- Notificar incidencia -->
+                    <http:request method="POST" config-ref="REST_API_COBRO_Config" path="/comunicaciones/enviar" doc:name="Notificar incidencia">
+                      <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  destinatario: vars.datos_entrada.emailSolicitante default vars.datos_entrada.emailEmpresa default "",
+  asunto: "Incidencia en flujo de cobro",
+  cuerpo: "No se puede cobrar la factura " ++ (vars.datos_entrada.idFactura as String) ++ " porque su estado es " ++ (vars.estado_factura as String)
+}]]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+                    </http:request>
+
+                    <ee:transform doc:name="Respuesta incidencia estado">
+                      <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  error: "Factura no apta para cobro",
+  estadoFactura: vars.estado_factura
+}]]></ee:set-payload>
+                      </ee:message>
+                      <ee:variables>
+                        <ee:set-variable variableName="httpStatus">409</ee:set-variable>
+                      </ee:variables>
+                    </ee:transform>
+                  </when>
+                  <otherwise>
+
+                    <!-- Paso 4: aprobacion supervisor -->
+                    <choice doc:name="Aprobada por supervisor?">
+                      <when expression="#[(vars.datos_entrada.aprobadaSupervisor default true) == false]">
+                        <http:request method="POST" config-ref="REST_API_COBRO_Config" path="/comunicaciones/enviar" doc:name="Notificar resolucion denegada">
+                          <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  destinatario: vars.datos_entrada.emailSolicitante default vars.datos_entrada.emailEmpresa default "",
+  asunto: "Resolucion de solicitud de cobro",
+  cuerpo: "La solicitud de cobro de la factura " ++ (vars.datos_entrada.idFactura as String) ++ " ha sido denegada por supervisión."
+}]]]></http:body>
+                          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+                        </http:request>
+
+                        <ee:transform doc:name="Respuesta denegada">
+                          <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  mensaje: "Solicitud de cobro denegada por supervisor"
+}]]></ee:set-payload>
+                          </ee:message>
+                          <ee:variables>
+                            <ee:set-variable variableName="httpStatus">403</ee:set-variable>
+                          </ee:variables>
+                        </ee:transform>
+                      </when>
+                      <otherwise>
+
+                        <!-- Paso 5: calcular estadisticas de recaudacion -->
+                        <http:request method="GET" config-ref="REST_API_COBRO_Config" path="#['/facturas/' ++ (vars.datos_entrada.idFactura as String) ++ '/pagos']" doc:name="Listar pagos previos factura">
+                          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+                        </http:request>
+                        <set-variable variableName="pagos_previos" value="#[payload default []]" doc:name="Set pagos_previos"/>
+
+                        <ee:transform doc:name="Calcular estadisticas recaudacion">
+                          <ee:variables>
+                            <ee:set-variable variableName="estadisticas"><![CDATA[%dw 2.0
+output application/java
+var pagos = vars.pagos_previos default []
+--- {
+  numeroPagosPrevios: sizeOf(pagos),
+  totalRecaudadoPrevio: (pagos map (($.importe default 0) as Number)) reduce ((item, acc=0) -> acc + item)
+}]]></ee:set-variable>
+                          </ee:variables>
+                        </ee:transform>
+
+                        <!-- Paso 6: formatear documento de pago y guardar en BD -->
+                        <http:request method="POST" config-ref="REST_API_COBRO_Config" path="/gestor-archivos/crear-documento-pago" doc:name="Crear documento de pago">
+                          <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  facturaId: vars.datos_entrada.idFactura,
+  importe: vars.datos_entrada.importe,
+  metodoPago: vars.datos_entrada.metodoPago default "TRANSFERENCIA",
+  referencia: vars.datos_entrada.referencia default null,
+  fechaPago: vars.datos_entrada.fechaPago default null,
+  estado: vars.datos_entrada.estado default "PENDIENTE"
+}]]]></http:body>
+                          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+                        </http:request>
+                        <set-variable variableName="pago_creado" value="#[payload]" doc:name="Set pago_creado"/>
+
+                        <!-- Paso 7: generar justificante / reporte -->
+                        <set-variable variableName="idPago" value="#[vars.pago_creado.idPago default null]" doc:name="Set idPago"/>
+                        <choice doc:name="Pago generado?">
+                          <when expression="#[(vars.idPago default null) != null]">
+                            <http:request method="GET" config-ref="REST_API_COBRO_Config" path="#['/pagos/' ++ (vars.idPago as String)]" doc:name="Obtener detalle del pago">
+                              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+                            </http:request>
+                            <set-variable variableName="detalle_pago" value="#[payload]" doc:name="Set detalle_pago"/>
+                          </when>
+                          <otherwise>
+                            <set-variable variableName="detalle_pago" value="#[null]" doc:name="Set detalle_pago vacío"/>
+                          </otherwise>
+                        </choice>
+
+                        <!-- Paso 8: entregar reporte/notificar al cliente -->
+                        <http:request method="POST" config-ref="REST_API_COBRO_Config" path="/comunicaciones/enviar" doc:name="Entregar reporte al cliente">
+                          <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  destinatario: vars.datos_entrada.emailSolicitante default vars.datos_entrada.emailEmpresa default "",
+  asunto: "Justificante de cobro generado",
+  cuerpo: "Se ha generado el justificante de cobro para la factura " ++ (vars.datos_entrada.idFactura as String) ++ ". ID pago: " ++ ((vars.idPago default "N/A") as String)
+}]]]></http:body>
+                          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+                        </http:request>
+
+                        <ee:transform doc:name="Respuesta final cobro">
+                          <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  mensaje: "Flujo de cobro completado",
+  idFactura: vars.datos_entrada.idFactura,
+  idDocumentoPago: vars.idPago default null,
+  estadoFactura: vars.estado_factura default null,
+  estadisticasRecaudacion: vars.estadisticas default {},
+  detallePago: vars.detalle_pago default null
+}]]></ee:set-payload>
+                          </ee:message>
+                          <ee:variables>
+                            <ee:set-variable variableName="httpStatus">201</ee:set-variable>
+                          </ee:variables>
+                        </ee:transform>
+
+                      </otherwise>
+                    </choice>
+
+                  </otherwise>
+                </choice>
+
+              </otherwise>
+            </choice>
+
+          </otherwise>
+        </choice>
+
+      </otherwise>
+    </choice>
+
+    <error-handler>
+      <on-error-propagate type="ANY" doc:name="Error general cobro iniciar">
+        <ee:transform doc:name="Transform error">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  error: "Error en flujo de cobro",
+  detalle: error.description default (error.message default "Error no controlado")
+}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+  <!-- ========================================================
+       2) LISTAR PAGOS DE FACTURA
+       GET /api/facturas/{idFactura}/pagos
+       ======================================================== -->
+  <flow name="cobro-listar-pagos-factura">
+    <http:listener config-ref="cobro-httpListenerConfig" path="/api/facturas/{idFactura}/pagos" allowedMethods="GET">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+
+    <set-variable variableName="InputWSKey" value="#[attributes.headers.WSKey default attributes.headers.wskey default '']" doc:name="Set InputWSKey"/>
+
+    <http:request method="GET"
+                  config-ref="REST_API_COBRO_Config"
+                  path="#['/facturas/' ++ (attributes.uriParams.idFactura as String) ++ '/pagos']"
+                  doc:name="GET /facturas/{idFactura}/pagos">
+      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+    </http:request>
+
+    <ee:transform doc:name="Passthrough pagos">
+      <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- payload]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+
+    <error-handler>
+      <on-error-propagate type="ANY" doc:name="Error listar pagos">
+        <ee:transform>
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  error: "Error al listar pagos de factura",
+  detalle: error.description default (error.message default "Error no controlado")
+}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+  <!-- ========================================================
+       3) OBTENER DETALLE DE PAGO
+       GET /api/pagos/{idPago}
+       ======================================================== -->
+  <flow name="cobro-obtener-pago">
+    <http:listener config-ref="cobro-httpListenerConfig" path="/api/pagos/{idPago}" allowedMethods="GET">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+
+    <set-variable variableName="InputWSKey" value="#[attributes.headers.WSKey default attributes.headers.wskey default '']" doc:name="Set InputWSKey"/>
+
+    <http:request method="GET"
+                  config-ref="REST_API_COBRO_Config"
+                  path="#['/pagos/' ++ (attributes.uriParams.idPago as String)]"
+                  doc:name="GET /pagos/{idPago}">
+      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+    </http:request>
+
+    <ee:transform doc:name="Passthrough pago">
+      <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- payload]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+
+    <error-handler>
+      <on-error-propagate type="ANY" doc:name="Error obtener pago">
+        <ee:transform>
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+--- {
+  error: "Error al obtener pago",
+  detalle: error.description default (error.message default "Error no controlado")
+}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+</mule>

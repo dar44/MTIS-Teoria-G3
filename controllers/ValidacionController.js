@@ -20,9 +20,19 @@ const validarDatosSolicitante = async (request, response) => {
   await Controller.handleRequest(request, response, service.validarDatosSolicitante);
 };
 
+const validarPermisosSolicitante = async (request, response) => {
+  await Controller.handleRequest(request, response, service.validarPermisosSolicitante);
+};
+
+const validarConsistenciaFechas = async (request, response) => {
+  await Controller.handleRequest(request, response, service.validarConsistenciaFechas);
+};
+
 
 module.exports = {
   validarWsKey,
   validarDatosFactura,
   validarDatosSolicitante,
+  validarPermisosSolicitante,
+  validarConsistenciaFechas,
 };

@@ -47,6 +47,19 @@ CREATE TABLE IF NOT EXISTS facturas (
   FOREIGN KEY (factura_original_id) REFERENCES facturas(id)
 );
 
+-- ── Tabla de pagos (cobros) ──
+CREATE TABLE IF NOT EXISTS pagos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  factura_id INT NOT NULL,
+  importe DECIMAL(13,2) NOT NULL,
+  metodo_pago VARCHAR(50),
+  referencia VARCHAR(100),
+  fecha_pago DATETIME,
+  estado VARCHAR(50) DEFAULT 'PENDIENTE',
+  creado_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (factura_id) REFERENCES facturas(id)
+);
+
 -- ── Tabla de auditoría de eventos ──
 CREATE TABLE IF NOT EXISTS auditoria_eventos (
   id          INT AUTO_INCREMENT PRIMARY KEY,

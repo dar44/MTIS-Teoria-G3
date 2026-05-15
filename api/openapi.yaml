@@ -1238,6 +1238,55 @@ paths:
 
   # ── Servicios de Utilidad (Cobro) ──
 
+  /facturas/{idFactura}/pagos:
+    get:
+      tags:
+        - FlujoCobro
+      summary: Listar pagos asociados a una factura
+      operationId: listarPagosPorFactura
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/idFactura"
+      responses:
+        "200":
+          description: Lista de pagos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DocumentoPagoResponse"
+        "401":
+          description: WSKey no valida.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /pagos/{idPago}:
+    get:
+      tags:
+        - FlujoCobro
+      summary: Obtener detalle de un pago por id
+      operationId: obtenerDocumentoPago
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+        - $ref: "#/components/parameters/idPago"
+      responses:
+        "200":
+          description: Detalle del pago
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentoPagoResponse"
+        "401":
+          description: WSKey no valida.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoCobroController
+
   /validaciones/permisos:
     post:
       tags:
@@ -1384,6 +1433,18 @@ components:
         type: integer
         format: int64
         example: 123
+
+    idPago:
+      name: idPago
+      in: path
+      description: Identificador único del documento de pago
+      required: true
+      style: simple
+      explode: false
+      schema:
+        type: integer
+        format: int64
+        example: 1
 
     emailEmpresa:
       name: email

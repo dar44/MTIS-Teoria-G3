@@ -47,6 +47,27 @@ server.use('/proxy/mule', express.json(), (req, res) => {
 });
 
 // --- Configuración oas3-tools ---
+// Rutas directas para endpoints de pagos (fallback cuando OpenAPI no mapea correctamente)
+const FlujoCobroController = require('./controllers/FlujoCobroController');
+
+server.get('/facturas/:idFactura/pagos', async (req, res) => {
+  try {
+    await FlujoCobroController.listarPagosPorFactura(req, res);
+  } catch (e) {
+    console.error('Fallback route /facturas/:idFactura/pagos error:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+server.get('/pagos/:idPago', async (req, res) => {
+  try {
+    await FlujoCobroController.obtenerDocumentoPago(req, res);
+  } catch (e) {
+    console.error('Fallback route /pagos/:idPago error:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
 const options = {
   routing: {
     controllers: path.join(__dirname, './controllers')
