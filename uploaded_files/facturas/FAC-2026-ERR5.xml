@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<factura xmlns="urn:facturacion-electronica:g3">
+  <id>6</id>
+  <numeroFactura>FAC-2026-ERR5</numeroFactura>
+  <empresa>
+    <id>1</id>
+    <nombre>Mi Empresa S.L.</nombre>
+    <nif>B12345678</nif>
+    <email>empresa@correo.com</email>
+    <iban>ES9121000418450200051332</iban>
+  </empresa>
+  <baseImponible>1250.75</baseImponible>
+  <iva>0.21</iva>
+  <total>1513.41</total>
+  <moneda>EUR</moneda>
+  <tipo>ORDINARIA</tipo>
+  <fechaEmision>2026-05-12T14:30:50Z</fechaEmision>
+</factura>

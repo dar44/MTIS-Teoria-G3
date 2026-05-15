@@ -20,9 +20,12 @@
     "express": "^4.22.1",
     "express-openapi-validator": "^3.9.1",
     "js-yaml": "^3.14.2",
+    "mysql2": "^3.22.3",
+    "nodemailer": "^8.0.7",
     "oas3-tools": "^2.2.3",
     "ono": "^5.0.1",
     "openapi-sampler": "^1.0.0-beta.15",
+    "pdfkit": "^0.18.0",
     "swagger-ui-express": "^4.6.3",
     "winston": "^3.2.1"
   },

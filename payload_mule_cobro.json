@@ -1,0 +1,11 @@
+﻿{
+  "idFactura": 1,
+  "importe": 100.50,
+  "metodoPago": "TRANSFERENCIA",
+  "referencia": "REF-MULE-001",
+  "fechaDesdeFacturacion": "2026-05-01",
+  "fechaHastaFacturacion": "2026-05-31",
+  "permisosSolicitante": true,
+  "aprobadaSupervisor": true,
+  "emailSolicitante": "empresa@correo.com"
+}
