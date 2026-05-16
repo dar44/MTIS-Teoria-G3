@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+  <!-- Listener Mule en puerto 9092 -->
+  <http:listener-config name="consulta-factura-httpListenerConfig">
+    <http:listener-connection host="0.0.0.0" port="9092"/>
+  </http:listener-config>
+
+  <!-- APIkit config con RAML de Consulta -->
+  <apikit:config name="consulta-factura-config"
+                 api="consulta-factura.raml"
+                 outboundHeadersMapName="outboundHeaders"
+                 httpStatusVarName="httpStatus"/>
+
+  <!-- Conexión HTTP a API Node.js en puerto 7777 -->
+  <http:request-config name="REST_API_Node" doc:name="REST API Node.js">
+    <http:request-connection host="localhost" port="7777"/>
+  </http:request-config>
+
+  <flow name="consulta-factura-main">
+    <http:listener config-ref="consulta-factura-httpListenerConfig" path="/api/*">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+
+    <!-- Cabeceras CORS -->
+    <ee:transform doc:name="Set CORS Headers">
+      <ee:variables>
+        <ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0 output application/java --- {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept",
+          "Content-Type": "application/json"
+        }]]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+
+    <!-- Preflight CORS -->
+    <choice doc:name="CORS Preflight">
+      <when expression="#[attributes.method == 'OPTIONS']">
+        <ee:transform doc:name="CORS Response">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <otherwise>
+        <choice doc:name="Router override">
+          <when expression="#[((attributes.requestPath default '') contains 'flujo-consulta/iniciar') and (attributes.method == 'POST')]">
+            <flow-ref name="flujo-consulta-handler" />
+          </when>
+          <otherwise>
+            <apikit:router config-ref="consulta-factura-config"/>
+          </otherwise>
+        </choice>
+      </otherwise>
+    </choice>
+
+    <!-- Manejo de errores APIkit -->
+    <error-handler>
+      <on-error-propagate type="APIKIT:BAD_REQUEST">
+        <ee:transform doc:name="400 Bad Request">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- 
+              { error: "ERROR_FORMATO", mensaje: "Formato de datos inválido" }]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+  <!-- Consola APIkit -->
+  <flow name="consulta-factura-console">
+    <http:listener config-ref="consulta-factura-httpListenerConfig" path="/console/*"/>
+    <apikit:console config-ref="consulta-factura-config"/>
+  </flow>
+
+  <flow name="post:\\flujo-consulta\\iniciar:application\\json:consulta-factura-config">
+    
+    <!-- PASO 1: Guardar datos de entrada y WSKey -->
+    <ee:transform doc:name="Paso 1: Extraer y guardar datos entrada">
+      <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0 output application/java --- payload]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+    <set-variable variableName="solicitud" value="#[payload]" doc:name="Set solicitud"/>
+    <set-variable variableName="InputWSKey" value="#[attributes.headers.WSKey]" doc:name="Set InputWSKey"/>
+      <!-- debug logger removed -->
+
+    <!-- PASO 2: Validar formato de datos (idFactura debe ser número positivo) -->
+    <choice doc:name="Paso 2: Validar formato de datos">
+      <when expression="#[vars.solicitud.idFactura == null or vars.solicitud.idFactura &lt;= 0]">
+          <ee:transform doc:name="ERROR_FORMATO">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {
+              error: "ERROR_FORMATO",
+              mensaje: "ID de factura inválido",
+              detalle: "El idFactura debe ser un número positivo"
+            }]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <otherwise>
+        <!-- PASO 3: Recuperar datos detallados en BD (usa /facturas/{id} existente en Node) -->
+        <http:request method="GET" config-ref="REST_API_Node"
+                      path="#['/facturas/' ++ vars.solicitud.idFactura]"
+                      doc:name="Paso 3: Recuperar datos detallados">
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+        </http:request>
+
+        <!-- Evaluar existencia: si el GET no devuelve 200 -> 404 -->
+        <choice doc:name="¿Factura existe?">
+          <when expression="#[attributes.statusCode != 200]">
+            <!-- ERROR_NO_ENCONTRADA: Factura no existe -->
+            <ee:transform doc:name="ERROR_NO_ENCONTRADA">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {
+                  error: "ERROR_NO_ENCONTRADA",
+                  mensaje: "Factura no encontrada",
+                  detalle: "La factura con ID " ++ vars.solicitud.idFactura ++ " no existe en el sistema"
+                }]]></ee:set-payload>
+              </ee:message>
+              <ee:variables>
+                <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+          </when>
+          <otherwise>
+            <!-- Factura existe: reutilizar payload como detalle -->
+            <set-variable variableName="facturaDetalle" value="#[payload]" doc:name="Set facturaDetalle"/>
+
+            <!-- PASO 5: Formatear respuesta en XML -->
+            <http:request method="POST" config-ref="REST_API_Node" 
+                          path="#['/gestor-archivos/generar-xml/' ++ vars.solicitud.idFactura]"
+                          doc:name="Paso 5: Formatear XML">
+              <http:body>#[vars.facturaDetalle]</http:body>
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+            </http:request>
+
+            <set-variable variableName="respuestaXML" value="#[payload]" doc:name="Set respuestaXML"/>
+
+            <!-- PASO 6: Enviar aviso al solicitante -->
+            <try doc:name="Try Enviar Aviso">
+              <http:request method="POST" config-ref="REST_API_Node" 
+                            path="/comunicaciones/enviar"
+                            doc:name="Paso 6: Enviar aviso">
+                <http:body><![CDATA[%dw 2.0 output application/json ---
+                {
+                  destinatario: "empresa@correo.com",
+                  asunto: "Consulta factura " ++ (vars.solicitud.idFactura as String),
+                  cuerpo: "Consulta completada. Archivo: " ++ (vars.respuestaXML.ruta default ""),
+                  payload: vars.respuestaXML
+                }]]></http:body>
+                <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+              </http:request>
+              <error-handler>
+                <on-error-continue doc:name="Ignore notify errors" logException="true" enableNotifications="true" type="ANY">
+                  <ee:transform doc:name="Notify failed">
+                    <ee:message>
+                      <ee:set-payload><![CDATA[%dw 2.0 output application/java --- { warn: "notify_failed", reason: (error.description default "Error desconocido") }]]></ee:set-payload>
+                    </ee:message>
+                  </ee:transform>
+                </on-error-continue>
+              </error-handler>
+            </try>
+
+            <!-- Respuesta final exitosa -->
+            <ee:transform doc:name="Respuesta éxito">
+              <ee:message>
+                  <ee:set-payload><![CDATA[%dw 2.0 output application/java --- write(vars.respuestaXML, "application/json")]]></ee:set-payload>
+                </ee:message>
+              <ee:variables>
+                <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+          </otherwise>
+        </choice>
+      </otherwise>
+    </choice>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MANEJO GLOBAL DE ERRORES
+         ═══════════════════════════════════════════════════════════════ -->
+    <error-handler>
+      <on-error-propagate enableNotifications="true" logException="true" type="ANY" 
+                          doc:name="On Error - ERROR_INTERNO">
+        <ee:transform doc:name="ERROR_INTERNO">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {
+              error: "ERROR_INTERNO",
+              mensaje: "Error en el procesamiento de la consulta",
+              detalle: (error.description default "Error desconocido")
+            }]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+  <!-- Los endpoints agnósticos son gestionados por APIkit a partir del RAML -->
+
+  <!-- Handler invocado desde el flujo principal para /api/flujo-consulta/iniciar -->
+  <flow name="flujo-consulta-handler">
+
+    <!-- Cabeceras CORS -->
+    <ee:transform doc:name="Set CORS Headers (local)">
+      <ee:variables>
+        <ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0 output application/java --- {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept",
+          "Content-Type": "application/json"
+        }]]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+
+    <!-- PASO 1: Guardar datos de entrada y WSKey -->
+    <ee:transform doc:name="Paso 1: Extraer y guardar datos entrada (local)">
+      <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0 output application/java ---
+          if (payload is String) read(payload, 'application/json') else payload]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+    <set-variable variableName="solicitud" value="#[payload]" doc:name="Set solicitud"/>
+    <set-variable variableName="InputWSKey" value="#[attributes.headers.WSKey]" doc:name="Set InputWSKey"/>
+
+    <!-- PASO 2: Validar formato de datos (idFactura debe ser número positivo) -->
+    <choice doc:name="Paso 2: Validar formato de datos (local)">
+      <when expression="#[vars.solicitud.idFactura == null or vars.solicitud.idFactura &lt;= 0]">
+          <ee:transform doc:name="ERROR_FORMATO (local)">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {
+              error: "ERROR_FORMATO",
+              mensaje: "ID de factura inválido",
+              detalle: "El idFactura debe ser un número positivo"
+            }]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <otherwise>
+        <!-- PASO 3: Recuperar datos detallados en BD (usa /facturas/{id} existente en Node) -->
+        <http:request method="GET" config-ref="REST_API_Node"
+                      path="#['/facturas/' ++ vars.solicitud.idFactura]"
+                      doc:name="Paso 3: Recuperar datos detallados (local)">
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+        </http:request>
+
+        <!-- Evaluar existencia: si el GET no devuelve 200 -> 404 -->
+        <choice doc:name="¿Factura existe? (local)">
+          <when expression="#[attributes.statusCode != 200]">
+            <!-- ERROR_NO_ENCONTRADA: Factura no existe -->
+            <ee:transform doc:name="ERROR_NO_ENCONTRADA (local)">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {
+                  error: "ERROR_NO_ENCONTRADA",
+                  mensaje: "Factura no encontrada",
+                  detalle: "La factura con ID " ++ vars.solicitud.idFactura ++ " no existe en el sistema"
+                }]]></ee:set-payload>
+              </ee:message>
+              <ee:variables>
+                <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+          </when>
+          <otherwise>
+            <!-- Factura existe: reutilizar payload como detalle -->
+            <set-variable variableName="facturaDetalle" value="#[payload]" doc:name="Set facturaDetalle (local)"/>
+
+            <!-- PASO 5: Formatear respuesta en XML -->
+            <http:request method="POST" config-ref="REST_API_Node" 
+                          path="#['/gestor-archivos/generar-xml/' ++ vars.solicitud.idFactura]"
+                          doc:name="Paso 5: Formatear XML (local)">
+              <http:body>#[vars.facturaDetalle]</http:body>
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]]></http:headers>
+            </http:request>
+
+            <set-variable variableName="respuestaXML" value="#[payload]" doc:name="Set respuestaXML (local)"/>
+
+            <!-- PASO 6: Enviar aviso al solicitante -->
+            <try doc:name="Try Enviar Aviso (local)">
+              <http:request method="POST" config-ref="REST_API_Node" 
+                            path="/comunicaciones/enviar"
+                            doc:name="Paso 6: Enviar aviso (local)">
+                <http:body><![CDATA[%dw 2.0 output application/json ---
+                {
+                  destinatario: "empresa@correo.com",
+                  asunto: "Consulta factura " ++ (vars.solicitud.idFactura as String),
+                  cuerpo: "Consulta completada. Archivo: " ++ (vars.respuestaXML.ruta default ""),
+                  payload: vars.respuestaXML
+                }]]></http:body>
+                <http:headers>#[{ WSKey: vars.InputWSKey }]</http:headers>
+              </http:request>
+              <error-handler>
+                <on-error-continue doc:name="Ignore notify errors (local)" logException="true" enableNotifications="true" type="ANY">
+                  <ee:transform doc:name="Notify failed (local)">
+                    <ee:message>
+                      <ee:set-payload><![CDATA[%dw 2.0 output application/java --- { warn: "notify_failed", reason: (error.description default "Error desconocido") }]]></ee:set-payload>
+                    </ee:message>
+                  </ee:transform>
+                </on-error-continue>
+              </error-handler>
+            </try>
+
+            <!-- Respuesta final exitosa -->
+            <ee:transform doc:name="Respuesta éxito (local)">
+              <ee:message>
+                  <ee:set-payload><![CDATA[%dw 2.0 output application/java --- write(vars.respuestaXML, "application/json")]]></ee:set-payload>
+                </ee:message>
+              <ee:variables>
+                <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+            <!-- debug logger removed -->
+          </otherwise>
+        </choice>
+      </otherwise>
+    </choice>
+
+    <error-handler>
+      <on-error-propagate enableNotifications="true" logException="true" type="ANY" doc:name="On Error - ERROR_INTERNO (local)">
+        <ee:transform doc:name="ERROR_INTERNO (local)">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {
+              error: "ERROR_INTERNO",
+              mensaje: "Error en el procesamiento de la consulta",
+              detalle: (error.description default "Error desconocido")
+            }]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+</mule>
