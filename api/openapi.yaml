@@ -1402,7 +1402,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-      x-swagger-router-controller: AuditoriaController
+      x-swagger-router-controller: EstadisticaController
 
 components:
   securitySchemes:
@@ -1686,6 +1686,7 @@ components:
             - ENVIADA
             - SUBSANADA
             - RECTIFICADA
+            - COBRADA
           example: ENVIADA
         motivo:
           type: string
@@ -2309,6 +2310,7 @@ components:
       properties:
         rangoFechas:
           type: string
+          nullable: true
           example: "2026-01-01/2026-03-31"
 
     EstadisticasRecaudacionResponse:

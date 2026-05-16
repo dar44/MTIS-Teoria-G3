@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <factura xmlns="urn:facturacion-electronica:g3">
-  <id>1</id>
+  <id>6</id>
   <numeroFactura>FAC-2026-001</numeroFactura>
   <empresa>
     <id>1</id>
@@ -14,7 +14,5 @@
   <total>1513.41</total>
   <moneda>EUR</moneda>
   <tipo>ORDINARIA</tipo>
-  <fechaEmision>2026-05-12T14:30:50Z</fechaEmision>
-  <fechaDesdeFacturacion>2026-04-01</fechaDesdeFacturacion>
-  <fechaHastaFacturacion>2026-05-01</fechaHastaFacturacion>
+  <fechaEmision>2026-05-15T12:08:00.000Z</fechaEmision>
 </factura>

@@ -136,8 +136,11 @@ const validarConsistenciaFechas = ({ body, WSKey }) => new Promise(
     try {
       await validarWSKey(WSKey);
 
+      console.log('Validacion fechas - body recibido:', JSON.stringify(body));
+
       const fechaOperacion = body && body.fechaOperacion;
       if (!fechaOperacion) {
+        console.error('Validacion fechas - falta fechaOperacion');
         return reject(Service.rejectResponse(
           'fechaOperacion es obligatoria',
           400,
@@ -146,16 +149,18 @@ const validarConsistenciaFechas = ({ body, WSKey }) => new Promise(
 
       const fecha = new Date(fechaOperacion);
       if (Number.isNaN(fecha.getTime())) {
+        console.error('Validacion fechas - formato invalido:', fechaOperacion);
         return reject(Service.rejectResponse(
-          'fechaOperacion no tiene un formato válido',
+          `fechaOperacion no tiene un formato válido: ${fechaOperacion}`,
           400,
         ));
       }
 
       const ahora = new Date();
       if (fecha.getTime() > ahora.getTime()) {
+        console.error('Validacion fechas - fecha en el futuro:', fechaOperacion, 'ahora:', ahora.toISOString());
         return reject(Service.rejectResponse(
-          'La fecha de operacion no puede estar en el futuro',
+          `La fecha de operacion no puede estar en el futuro: ${fechaOperacion}`,
           400,
         ));
       }

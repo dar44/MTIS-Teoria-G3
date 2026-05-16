@@ -310,12 +310,22 @@ const crearDocumentoPago = ({ body, WSKey }) => new Promise(
         ));
       }
 
+      // Convertir fecha ISO a formato MySQL (YYYY-MM-DD HH:mm:ss)
+      let fechaPago = (body && body.fechaPago) || null;
+      if (fechaPago && typeof fechaPago === 'string') {
+        // Si es ISO (ej: 2026-05-15T12:21:00.000Z), convertir a MySQL
+        if (fechaPago.includes('T')) {
+          const d = new Date(fechaPago);
+          fechaPago = d.toISOString().slice(0, 19).replace('T', ' ');
+        }
+      }
+
       const pago = await db.crearDocumentoPago({
         facturaId: factura.id,
         importe: importeCobrado,
         metodoPago: (body && (body.metodoPago || body.metodo)) || null,
         referencia: (body && body.referencia) || null,
-        fechaPago: (body && body.fechaPago) || null,
+        fechaPago: fechaPago,
         estado: (body && body.estado) || 'PENDIENTE',
       });
 
