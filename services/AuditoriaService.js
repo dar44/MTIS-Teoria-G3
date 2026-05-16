@@ -15,7 +15,7 @@ const registrarErrorAuditoria = ({ body, WSKey }) => new Promise(
     try {
       await validarWSKey(WSKey);
 
-      await db.registrarErrorAuditoria({
+      const resultado = await db.registrarErrorAuditoria({
         tipoError: body.tipoError,
         descripcion: body.descripcion,
         fecha: body.fecha ? new Date(body.fecha) : new Date(),
@@ -27,6 +27,19 @@ const registrarErrorAuditoria = ({ body, WSKey }) => new Promise(
         mensaje: 'Error técnico registrado correctamente',
       }, 201));
     } catch (e) {
+      console.error('[AUDITORIA] ERROR al registrar:', e.message);
+      // Log de auditoría: Error al registrar error de auditoría
+      try {
+        await db.registrarErrorAuditoria({
+          tipoError: 'AUDITORIA_FALLO_REGISTRAR_ERROR',
+          descripcion: `Fallo al registrar error de auditoría: ${e.message}`,
+          fecha: new Date(),
+          origen: 'AuditoriaController',
+          idFactura: body.idFactura || null,
+        });
+      } catch (logError) {
+        console.error('[AUDITORIA] No se pudo registrar log de error de auditoría:', logError);
+      }
       reject(Service.rejectResponse(
         e.salida || e.message || 'Error al registrar error de auditoría',
         e.status || 500,
@@ -47,7 +60,7 @@ const registrarEventoAuditoria = ({ body, WSKey }) => new Promise(
     try {
       await validarWSKey(WSKey);
 
-      await db.registrarEventoAuditoria({
+      const resultado = await db.registrarEventoAuditoria({
         tipoEvento: body.tipoEvento,
         descripcion: body.descripcion,
         fecha: body.fecha ? new Date(body.fecha) : new Date(),
@@ -58,6 +71,19 @@ const registrarEventoAuditoria = ({ body, WSKey }) => new Promise(
         mensaje: 'Evento de auditoría registrado correctamente',
       }, 201));
     } catch (e) {
+      console.error('[AUDITORIA] ERROR al registrar evento:', e.message);
+      // Log de auditoría: Error al registrar evento de auditoría
+      try {
+        await db.registrarErrorAuditoria({
+          tipoError: 'AUDITORIA_FALLO_REGISTRAR_EVENTO',
+          descripcion: `Fallo al registrar evento de auditoría: ${e.message}`,
+          fecha: new Date(),
+          origen: 'AuditoriaController',
+          idFactura: null,
+        });
+      } catch (logError) {
+        console.error('No se pudo registrar log de error de auditoría:', logError);
+      }
       reject(Service.rejectResponse(
         e.salida || e.message || 'Error al registrar evento',
         e.status || 500,

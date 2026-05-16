@@ -24,7 +24,9 @@ server.use('/cliente', express.static(path.join(__dirname, 'cliente')));
 
 // --- Proxy hacia MuleSoft (evita CORS) ---
 server.use('/proxy/mule', express.json(), (req, res) => {
-  const muleUrl = `http://localhost:9092/api${req.url}`;
+  // Detectar si es para cobro (14102) o emisión (9092)
+  const puerto = req.url.includes('cobro') ? 14102 : 9092;
+  const muleUrl = `http://localhost:${puerto}/api${req.url}`;
   const headers = { 'Content-Type': 'application/json' };
   if (req.headers['wskey']) headers['WSKey'] = req.headers['wskey'];
 
@@ -38,7 +40,7 @@ server.use('/proxy/mule', express.json(), (req, res) => {
     });
   });
   muleReq.on('error', (err) => {
-    res.status(502).json({ error: 'No se pudo conectar con MuleSoft (puerto 9092)', detalle: err.message });
+    res.status(502).json({ error: `No se pudo conectar con MuleSoft (puerto ${puerto})`, detalle: err.message });
   });
   if (req.body && Object.keys(req.body).length > 0) {
     muleReq.write(JSON.stringify(req.body));
