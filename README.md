@@ -72,11 +72,13 @@ Esto arranca:
 
 ## 4. Iniciar MuleSoft (Anypoint Studio)
 
+### 4.1 Despliegue de Emisión de Factura
+
 1. **Crear un nuevo proyecto Mule** en Anypoint Studio
 2. Copiar estos archivos del repositorio al proyecto Mule:
    - `mulesoft/emision-factura.raml` → `src/main/resources/api/`
    - `mulesoft/emision-factura.xml` → `src/main/mule/`
-3. Añadir dependencias al `pom.xml` del proyecto Mule:
+3. Añadir dependencias al `pom.xml`:
 
 ```xml
 <dependency>
@@ -85,7 +87,6 @@ Esto arranca:
     <version>1.14.6</version>
     <classifier>mule-plugin</classifier>
 </dependency>
-
 <dependency>
     <groupId>mysql</groupId>
     <artifactId>mysql-connector-java</artifactId>
@@ -96,7 +97,17 @@ Esto arranca:
 4. Click derecho en el proyecto → **Maven → Update Project**
 5. Click derecho → **Run As → Mule Application**
 
-MuleSoft arrancará en **http://localhost:9092**.
+Arrancará en **http://localhost:9092/api/console**.
+
+### 4.2 Despliegue de Consulta de Factura
+
+1. **Crear nuevo proyecto Mule**: File → New → Mule Project → Nombre: `consulta-factura`
+2. **Copiar archivos**:
+   - `mulesoft/consulta-factura.raml` → `src/main/resources/api/`
+   - `mulesoft/consulta-factura.xml` → `src/main/mule/`
+3. **Actualizar pom.xml** si es necesario (mismas dependencias que emisión)
+4. **Maven Update**: Click derecho → Maven → Update Project
+5. **Ejecutar**: Click derecho → Run As → Mule Application
 
 ---
 
@@ -135,18 +146,36 @@ En el selector de endpoint puedes elegir:
 
 ## 6. Probar con curl
 
+### Flujo de Emisión de Factura
+
 ```bash
-# Via Node.js directo
+# Via Node.js directo (puerto 7777)
 curl -X POST "http://localhost:7777/flujo-emision/iniciar" \
   -H "Content-Type: application/json" \
   -H "WSKey: prueba" \
   -d '{"empresa":{"email":"empresa@correo.com","nombre":"Mi Empresa S.L.","nif":"B12345678","iban":"ES9121000418450200051332"},"factura":{"numeroFactura":"FAC-2026-CURL01","baseImponible":1250.75,"iva":0.21,"moneda":"EUR","tipo":"ORDINARIA","fechaEmision":"2026-05-12T14:30:50Z"}}'
 
-# Via MuleSoft
+# Via MuleSoft (puerto 9092)
 curl -X POST "http://localhost:9092/api/flujo-emision/iniciar" \
   -H "Content-Type: application/json" \
   -H "WSKey: prueba" \
   -d '{"empresa":{"email":"empresa@correo.com","nombre":"Mi Empresa S.L.","nif":"B12345678","iban":"ES9121000418450200051332"},"factura":{"numeroFactura":"FAC-2026-CURL02","baseImponible":1250.75,"iva":0.21,"moneda":"EUR","tipo":"ORDINARIA","fechaEmision":"2026-05-12T14:30:50Z"}}'
+```
+
+### Flujo de Consulta de Factura
+
+```bash
+# Via Node.js directo (puerto 7777)
+curl -X POST "http://localhost:7777/flujo-consulta/iniciar" \
+  -H "Content-Type: application/json" \
+  -H "WSKey: prueba" \
+  -d '{"idFactura": 1}'
+
+# Via MuleSoft (puerto 9092)
+curl -X POST "http://localhost:9092/api/flujo-consulta/iniciar" \
+  -H "Content-Type: application/json" \
+  -H "WSKey: prueba" \
+  -d '{"idFactura": 1}'
 ```
 
 ---

@@ -1,0 +1,240 @@
+#%RAML 1.0
+title: API REST - Facturación Electrónica G3 (Consulta de Factura)
+version: 1.0.0
+baseUri: http://localhost:9092/api
+mediaType: application/json
+description: Contrato API para el proceso de Consulta de Factura
+
+types:
+  SolicitudConsultaFactura:
+    type: object
+    description: Solicitud para consultar una factura
+    example:
+      strict: false
+      value:
+        idFactura: 1
+    properties:
+      idFactura:
+        description: ID único de la factura a consultar
+        type: number
+        required: true
+
+  FacturaDetalle:
+    type: object
+    description: Información detallada de una factura
+    example:
+      strict: false
+      value:
+        idFactura: 1
+        numeroFactura: FAC-2026-001
+        empresaId: 1
+        baseImponible: 1250.75
+        iva: 0.21
+        moneda: EUR
+        tipo: ORDINARIA
+        estado: VALIDA
+        fechaEmision: "2026-05-10T14:30:50Z"
+    properties:
+      idFactura:
+        type: number
+        required: true
+      numeroFactura:
+        type: string
+        required: true
+      empresaId:
+        type: number
+        required: true
+      baseImponible:
+        type: number
+        format: double
+        required: true
+      iva:
+        type: number
+        format: double
+        required: true
+      moneda:
+        type: string
+        required: true
+      tipo:
+        enum:
+          - ORDINARIA
+          - RECTIFICATIVA
+        type: string
+        required: true
+      estado:
+        enum:
+          - VALIDA
+          - INVALIDA
+          - ANULADA
+        type: string
+        required: true
+      fechaEmision:
+        type: datetime
+        required: true
+
+  ExistenciaFactura:
+    type: object
+    description: Respuesta de validación de existencia de factura
+    example:
+      strict: false
+      value:
+        existe: true
+        idFactura: 1
+    properties:
+      existe:
+        type: boolean
+        required: true
+      idFactura:
+        type: number
+        required: false
+
+  RespuestaXML:
+    type: object
+    description: Respuesta con formato XML de factura
+    example:
+      strict: false
+      value:
+        xml: "<factura>...</factura>"
+        base64?: "BASE64ENCODED"
+    properties:
+      xml:
+        type: string
+        required: true
+      base64?:
+        type: string
+
+  ErrorResponse:
+    type: object
+    description: Respuesta de error del proceso
+    example:
+      strict: false
+      value:
+        error: ERROR_NO_ENCONTRADA
+        mensaje: Factura no encontrada
+        detalle: La factura con ID 999 no existe en el sistema
+    properties:
+      error:
+        description: Código de error
+        enum:
+          - ERROR_FORMATO
+          - ERROR_NO_ENCONTRADA
+          - ERROR_RECUPERACION
+          - ERROR_INTERNO
+        type: string
+        required: true
+      mensaje:
+        type: string
+        required: true
+      detalle?:
+        type: string
+
+/flujo-consulta:
+  /iniciar:
+    post:
+      displayName: Iniciar flujo de consulta de factura
+      description: Inicia el proceso de consulta de factura validando datos, verificando existencia y generando respuesta en XML
+      headers:
+        WSKey:
+          description: Clave de autenticación
+          required: true
+          type: string
+          example: prueba
+      body:
+        application/json:
+          type: object
+          example:
+            idFactura: 1
+      responses:
+        "200":
+          description: Consulta exitosa. Factura encontrada y formateada.
+          body:
+            application/json:
+              type: RespuestaXML
+        "400":
+          description: Error de formato en datos de entrada
+          body:
+            application/json:
+              type: ErrorResponse
+        "404":
+          description: Factura no encontrada en BD
+          body:
+            application/json:
+              type: ErrorResponse
+        "500":
+          description: Error de recuperación de datos o procesamiento interno
+          body:
+            application/json:
+              type: ErrorResponse
+
+/facturas:
+  /{idFactura}:
+    get:
+      displayName: Recuperar datos detallados de factura
+      description: Servicio agnóstico que recupera la información completa de una factura
+      responses:
+        "200":
+          description: Datos de factura obtenidos correctamente
+          body:
+            application/json:
+              type: FacturaDetalle
+        "404":
+          description: Factura no encontrada
+          body:
+            application/json:
+              type: ErrorResponse
+        "500":
+          description: Error en recuperación de datos
+          body:
+            application/json:
+              type: ErrorResponse
+
+  /{idFactura}/existencia:
+    get:
+      displayName: Validar existencia de factura
+      description: Servicio agnóstico que verifica si una factura existe en la base de datos
+      responses:
+        "200":
+          description: Validación completada
+          body:
+            application/json:
+              type: ExistenciaFactura
+        "400":
+          description: Formato inválido
+          body:
+            application/json:
+              type: ErrorResponse
+
+/gestor-archivos:
+  /generar-xml:
+    post:
+      displayName: Formatear respuesta en XML
+      description: Servicio agnóstico que transforma datos de factura a formato XML
+      body:
+        application/json:
+          type: FacturaDetalle
+      responses:
+        "200":
+          description: XML generado exitosamente
+          body:
+            application/json:
+              type: RespuestaXML
+        "500":
+          description: Error al generar XML
+          body:
+            application/json:
+              type: ErrorResponse
+
+/comunicaciones:
+  /enviar-aviso:
+    post:
+      displayName: Enviar aviso/respuesta final
+      description: Servicio agnóstico que estandariza el envío de respuesta final
+      body:
+        application/json:
+          type: object
+      responses:
+        "200":
+          description: Aviso enviado correctamente
+          body:
+            application/json:
+              type: object

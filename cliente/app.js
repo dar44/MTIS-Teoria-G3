@@ -26,6 +26,16 @@ const PASOS_BPMN_COBRO = [
   'Fin',
 ];
 
+const PASOS_BPMN_CONSULTA = [
+  'Validar WSKey',
+  'Validar formato de datos (ID factura)',
+  'Recuperar datos detallados de factura en BD',
+  'Verificar existencia de factura',
+  'Formatear respuesta en XML',
+  'Enviar aviso al solicitante',
+  'Fin',
+];
+
 // ===== INICIALIZACIÓN =====
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -56,6 +66,7 @@ function cambiarFlujo() {
   const flujo = document.getElementById('flujo').value;
   const seccionEmision = document.querySelector('.two-col');
   const seccionCobro = document.getElementById('seccion-cobro');
+  const seccionConsulta = document.getElementById('seccion-consulta');
   const btnEnviar = document.getElementById('btn-enviar');
   const btnWSKey = document.getElementById('btn-test-wskey');
   const btnEmpresa = document.getElementById('btn-test-empresa');
@@ -64,6 +75,7 @@ function cambiarFlujo() {
   if (flujo === 'emision') {
     seccionEmision.style.display = 'grid';
     seccionCobro.style.display = 'none';
+    seccionConsulta.style.display = 'none';
     btnEnviar.textContent = '🚀 Iniciar Flujo de Emisión';
     btnWSKey.style.display = 'block';
     btnEmpresa.style.display = 'block';
@@ -71,15 +83,27 @@ function cambiarFlujo() {
       <option value="http://localhost:7777/proxy/mule/flujo-emision/iniciar">MuleSoft via proxy (puerto 9092)</option>
       <option value="http://localhost:7777/flujo-emision/iniciar">Node.js directo (puerto 7777)</option>
     `;
-  } else {
+  } else if (flujo === 'cobro') {
     seccionEmision.style.display = 'none';
     seccionCobro.style.display = 'block';
+    seccionConsulta.style.display = 'none';
     btnEnviar.textContent = '💳 Iniciar Flujo de Cobro';
     btnWSKey.style.display = 'none';
     btnEmpresa.style.display = 'none';
     endpointSelect.innerHTML = `
       <option value="http://localhost:7777/proxy/mule/cobros/iniciar">MuleSoft via proxy (puerto 14102)</option>
       <option value="http://localhost:7777/cobros/iniciar">Node.js directo (puerto 7777)</option>
+    `;
+  } else if (flujo === 'consulta') {
+    seccionEmision.style.display = 'none';
+    seccionCobro.style.display = 'none';
+    seccionConsulta.style.display = 'block';
+    btnEnviar.textContent = '🔍 Iniciar Flujo de Consulta';
+    btnWSKey.style.display = 'none';
+    btnEmpresa.style.display = 'none';
+    endpointSelect.innerHTML = `
+      <option value="http://localhost:7777/proxy/mule/flujo-consulta/iniciar">MuleSoft via proxy (puerto 9092)</option>
+      <option value="http://localhost:7777/flujo-consulta/iniciar">Node.js directo (puerto 7777)</option>
     `;
   }
 }
@@ -136,6 +160,14 @@ function getFormDataCobro() {
   return { ...solicitante, ...cobro, ...validaciones };
 }
 
+function getFormDataConsulta() {
+  return {
+    idFactura: parseInt(document.getElementById('con-idFactura').value),
+    emailSolicitante: document.getElementById('con-email').value,
+    usuarioId: document.getElementById('con-usuarioId').value,
+  };
+}
+
 // ===== TIMELINE =====
 
 function mostrarTimeline(pasoActual, estado, flujo = 'emision') {
@@ -144,7 +176,10 @@ function mostrarTimeline(pasoActual, estado, flujo = 'emision') {
   const section = document.getElementById('timeline-section');
   section.style.display = 'block';
 
-  const PASOS = flujo === 'emision' ? PASOS_BPMN_EMISION : PASOS_BPMN_COBRO;
+  let PASOS;
+  if (flujo === 'emision') PASOS = PASOS_BPMN_EMISION;
+  else if (flujo === 'cobro') PASOS = PASOS_BPMN_COBRO;
+  else PASOS = PASOS_BPMN_CONSULTA;
 
   PASOS.forEach((paso, i) => {
     const div = document.createElement('div');
@@ -179,7 +214,10 @@ function detectarPasoFallido(status, body, flujo = 'emision') {
   
   // Éxito (2xx)
   if (status >= 200 && status < 300) {
-    const PASOS = flujo === 'emision' ? PASOS_BPMN_EMISION : PASOS_BPMN_COBRO;
+    let PASOS;
+    if (flujo === 'emision') PASOS = PASOS_BPMN_EMISION;
+    else if (flujo === 'cobro') PASOS = PASOS_BPMN_COBRO;
+    else PASOS = PASOS_BPMN_CONSULTA;
     return { paso: PASOS.length - 1, estado: 'done' };
   }
   
@@ -195,7 +233,7 @@ function detectarPasoFallido(status, body, flujo = 'emision') {
     return { paso: 0, estado: 'error' };
   } 
   // Errores en COBRO
-  else {
+  else if (flujo === 'cobro') {
     if (msg.includes('wskey')) return { paso: 0, estado: 'error' };
     if (msg.includes('permiso')) return { paso: 1, estado: 'error' };
     if (msg.includes('fecha')) return { paso: 2, estado: 'error' };
@@ -205,6 +243,16 @@ function detectarPasoFallido(status, body, flujo = 'emision') {
     if (msg.includes('documento de pago') || msg.includes('pago')) return { paso: 6, estado: 'error' };
     if (msg.includes('pdf') || msg.includes('justificante')) return { paso: 7, estado: 'error' };
     if (msg.includes('incidencia')) return { paso: 8, estado: 'error' };
+    return { paso: 0, estado: 'error' };
+  }
+  // Errores en CONSULTA
+  else {
+    if (msg.includes('wskey')) return { paso: 0, estado: 'error' };
+    if (msg.includes('error_formato') || msg.includes('inválido')) return { paso: 1, estado: 'error' };
+    if (msg.includes('recuperacion') || msg.includes('fallo')) return { paso: 2, estado: 'error' };
+    if (msg.includes('no encontrada') || msg.includes('no existe') || status === 404) return { paso: 3, estado: 'error' };
+    if (msg.includes('xml')) return { paso: 4, estado: 'error' };
+    if (msg.includes('aviso') || msg.includes('notify')) return { paso: 5, estado: 'error' };
     return { paso: 0, estado: 'error' };
   }
 }
@@ -225,7 +273,7 @@ function mostrarResultado(status, body, elapsed, flujo = 'emision') {
   document.getElementById('response-time').textContent = `${elapsed}ms`;
   document.getElementById('resultado').textContent = JSON.stringify(body, null, 2);
 
-  // Mostrar resumen conciso para cobro
+  // Mostrar resumen conciso para cobro y consulta
   const resumenEl = document.getElementById('resultado-info');
   if (resumenEl) {
     resumenEl.innerHTML = '';
@@ -237,6 +285,14 @@ function mostrarResultado(status, body, elapsed, flujo = 'emision') {
       if (idDoc) lines.push(`<strong>ID pago:</strong> ${idDoc}`);
       if (estado) lines.push(`<strong>Estado factura:</strong> ${estado}`);
       if (importe) lines.push(`<strong>Importe usado:</strong> ${importe}`);
+      resumenEl.innerHTML = lines.join(' — ');
+      resumenEl.style.display = lines.length ? 'block' : 'none';
+    } else if (flujo === 'consulta' && status >= 200 && status < 300) {
+      const xml = body.xml ? body.xml.substring(0, 100) + '...' : null;
+      const ruta = body.ruta || null;
+      const lines = [];
+      if (xml) lines.push(`<strong>XML:</strong> ${xml}`);
+      if (ruta) lines.push(`<strong>Archivo:</strong> ${ruta}`);
       resumenEl.innerHTML = lines.join(' — ');
       resumenEl.style.display = lines.length ? 'block' : 'none';
     } else {
@@ -310,8 +366,10 @@ function enviarPeticion() {
   
   if (flujo === 'emision') {
     body = getFormDataEmision();
-  } else {
+  } else if (flujo === 'cobro') {
     body = getFormDataCobro();
+  } else {
+    body = getFormDataConsulta();
   }
   
   hacerPeticion(url, wskey, body, flujo);
