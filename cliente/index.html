@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cliente Emisión de Facturas - G3</title>
+  <title>Cliente Facturación Electrónica - G3</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -14,7 +14,7 @@
         <span class="logo-icon">📄</span>
         <h1>Facturación Electrónica G3</h1>
       </div>
-      <p class="subtitle">Cliente operativo — Flujos BPMN (Emisión / Cobro)</p>
+      <p class="subtitle">Cliente operativo — Flujos BPMN (Emisión / Cobro / Consulta)</p>
     </header>
 
     <main class="main">
@@ -27,6 +27,7 @@
             <select id="flujo" onchange="cambiarFlujo()">
               <option value="emision">📄 Flujo de Emisión</option>
               <option value="cobro">💳 Flujo de Cobro</option>
+              <option value="consulta">🔍 Flujo de Consulta</option>
             </select>
           </div>
           <div class="field">
@@ -193,6 +194,33 @@
             </div>
           </div>
         </section>
+      </div>
+
+      <!-- SECCIÓN CONSULTA (oculta por defecto) -->
+      <div id="seccion-consulta" style="display:none">
+        <div class="two-col">
+          <!-- Datos Consulta -->
+          <section class="card">
+            <h2>🔍 Datos de la Consulta</h2>
+            <div class="field">
+              <label for="con-idFactura">ID Factura *</label>
+              <input type="number" id="con-idFactura" value="1" placeholder="ID de la factura a consultar">
+            </div>
+          </section>
+
+          <!-- Información adicional -->
+          <section class="card">
+            <h2>📋 Información de Contacto</h2>
+            <div class="field">
+              <label for="con-email">Email para respuesta *</label>
+              <input type="email" id="con-email" value="empresa@correo.com" placeholder="Donde recibirá la respuesta">
+            </div>
+            <div class="field">
+              <label for="con-usuarioId">Usuario ID</label>
+              <input type="text" id="con-usuarioId" value="USR-001" placeholder="Identificador del solicitante">
+            </div>
+          </section>
+        </div>
       </div>
 
       <!-- Botones -->

@@ -164,6 +164,19 @@ curl -X POST "http://localhost:9092/api/flujo-emision/iniciar" \
 
 ### Flujo de Consulta de Factura
 
+```bash
+# Via Node.js directo (puerto 7777)
+curl -X POST "http://localhost:7777/flujo-consulta/iniciar" \
+  -H "Content-Type: application/json" \
+  -H "WSKey: prueba" \
+  -d '{"idFactura": 1}'
+
+# Via MuleSoft (puerto 9092)
+curl -X POST "http://localhost:9092/api/flujo-consulta/iniciar" \
+  -H "Content-Type: application/json" \
+  -H "WSKey: prueba" \
+  -d '{"idFactura": 1}'
+```
 
 ---
 
