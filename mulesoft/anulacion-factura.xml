@@ -1,0 +1,456 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       CONFIGURACIONES
+       ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Listener HTTP para el orquestador de anulacion (puerto 9095) -->
+  <http:listener-config name="anulacion-factura-httpListenerConfig">
+    <http:listener-connection host="0.0.0.0" port="9095"/>
+  </http:listener-config>
+
+  <!-- APIkit config apuntando al RAML del flujo de anulacion -->
+  <apikit:config name="anulacion-factura-config"
+                 api="anulacion-factura.raml"
+                 outboundHeadersMapName="outboundHeaders"
+                 httpStatusVarName="httpStatus"/>
+
+  <!-- Conexion directa a MySQL (para validar WSKey) -->
+  <db:config name="Anulacion_Database_Config" doc:name="Database Config Anulacion">
+    <db:my-sql-connection host="localhost" port="3306"
+                          user="root" password="root"
+                          database="facturacion">
+      <db:connection-properties>
+        <db:connection-property key="serverTimezone" value="UTC"/>
+      </db:connection-properties>
+    </db:my-sql-connection>
+  </db:config>
+
+  <!-- Conexion HTTP al API REST Node.js (puerto 7777) -->
+  <http:request-config name="REST_API_Anulacion_Config" doc:name="REST API Node.js Anulacion">
+    <http:request-connection host="localhost" port="7777"/>
+  </http:request-config>
+
+  <!-- Conexion SMTP para notificaciones -->
+  <email:smtp-config name="Email_SMTP_Anulacion" doc:name="Email SMTP Anulacion">
+    <email:smtp-connection host="localhost" port="2525"/>
+  </email:smtp-config>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FLOW PRINCIPAL - Router APIkit
+       ═══════════════════════════════════════════════════════════════ -->
+  <flow name="anulacion-factura-main">
+    <http:listener config-ref="anulacion-factura-httpListenerConfig" path="/api/*">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+
+    <!-- Cabeceras CORS para todas las respuestas -->
+    <ee:transform doc:name="Set CORS Headers">
+      <ee:variables>
+        <ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0 output application/java --- {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept"
+        }]]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+
+    <choice doc:name="CORS Preflight">
+      <when expression="#[attributes.method == 'OPTIONS']">
+        <ee:transform doc:name="CORS Response">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+            <ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0 output application/java --- {
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept"
+            }]]></ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <otherwise>
+        <apikit:router config-ref="anulacion-factura-config"/>
+      </otherwise>
+    </choice>
+
+    <error-handler>
+      <on-error-propagate type="APIKIT:BAD_REQUEST">
+        <ee:transform doc:name="400 Bad Request">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {codigo: "ERR-400", mensaje: "Bad request"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+      <on-error-propagate type="APIKIT:NOT_FOUND">
+        <ee:transform doc:name="404 Not Found">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {codigo: "ERR-404", mensaje: "Resource not found"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+      <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+        <ee:transform doc:name="405 Method Not Allowed">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {codigo: "ERR-405", mensaje: "Method not allowed"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">405</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+  <!-- Consola APIkit -->
+  <flow name="anulacion-factura-console">
+    <http:listener config-ref="anulacion-factura-httpListenerConfig" path="/console/*">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+    <apikit:console config-ref="anulacion-factura-config"/>
+    <error-handler>
+      <on-error-propagate type="APIKIT:NOT_FOUND">
+        <ee:transform>
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json --- {codigo: "ERR-404", mensaje: "Resource not found"}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+  </flow>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FLUJO DE ANULACION DE FACTURA
+       Autor: Sergio Minguez Berja
+       Proceso: 8 pasos segun metodologia SOA Grupo 3
+       ═══════════════════════════════════════════════════════════════ -->
+  <flow name="post:\flujo-anulacion\iniciar:application\json:anulacion-factura-config">
+
+    <!-- Transformar payload de entrada a Java object -->
+    <ee:transform doc:name="Transform payload a Object">
+      <ee:message>
+        <ee:set-payload><![CDATA[%dw 2.0 output application/java --- payload]]></ee:set-payload>
+      </ee:message>
+    </ee:transform>
+
+    <!-- Guardar datos de entrada y WSKey en variables -->
+    <set-variable variableName="datos_entrada" value="#[payload]" doc:name="Set datos_entrada"/>
+    <set-variable variableName="InputWSKey" value="#[attributes.headers.WSKey]" doc:name="Set InputWSKey"/>
+
+    <!-- ─── PASO 1: Validar WSKey contra la base de datos ─── -->
+    <db:select doc:name="Obtener WSKey de BD" config-ref="Anulacion_Database_Config">
+      <db:sql><![CDATA[SELECT valor FROM parametros WHERE clave = 'rest_key']]></db:sql>
+    </db:select>
+    <set-variable value="#[payload[0].valor]" variableName="RealWSKey" doc:name="Set RealWSKey"/>
+
+    <choice doc:name="Validar WSKey">
+      <!-- WSKey invalida: registrar en auditoria y finalizar -->
+      <when expression="#[vars.InputWSKey != vars.RealWSKey]">
+
+        <db:insert doc:name="Registrar intento no autorizado" config-ref="Anulacion_Database_Config">
+          <db:sql><![CDATA[INSERT INTO auditoria_eventos (tipo_evento, descripcion, fecha, origen)
+            VALUES (:tipo, :desc, NOW(), 'mulesoft-anulacion')]]></db:sql>
+          <db:input-parameters><![CDATA[#[{
+            'tipo': 'INTENTO_NO_AUTORIZADO',
+            'desc': 'WSKey invalida en flujo de anulacion. Email solicitante: ' ++ (vars.datos_entrada.email default 'desconocido')
+          }]]]></db:input-parameters>
+        </db:insert>
+
+        <ee:transform doc:name="Respuesta WSKey invalida">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
+            {
+              codigo: "ERR-401",
+              mensaje: "WSKey no valida",
+              detalle: "Acceso no autorizado al sistema de anulacion de facturas"
+            }]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">401</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+        <raise-error type="ACCESS:UNAUTHORIZED" description="WSKey invalida"/>
+      </when>
+
+      <!-- WSKey valida: continuar con el flujo -->
+      <otherwise>
+
+        <!-- ─── PASO 2: Validar datos del solicitante (NIF + empresa registrada) ─── -->
+        <set-payload value="#[{}]" doc:name="Reset payload para validacion solicitante"/>
+        <http:request method="POST" config-ref="REST_API_Anulacion_Config"
+                      path="/validaciones/datos-solicitante"
+                      doc:name="Validar datos del solicitante">
+          <http:body><![CDATA[#[%dw 2.0 output application/json ---
+          {
+            nif: vars.datos_entrada.nif,
+            email: vars.datos_entrada.email
+          }]]></http:body>
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+        </http:request>
+        <set-variable variableName="resp_validacion_solicitante" value="#[payload]" doc:name="Set resp_validacion_solicitante"/>
+
+        <choice doc:name="Datos solicitante validos?">
+          <!-- Solicitante no valido: notificar y finalizar -->
+          <when expression="#[(vars.resp_validacion_solicitante.valido default false) == false]">
+
+            <ee:transform doc:name="Respuesta solicitante no valido">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
+                {
+                  codigo: "ERR-400",
+                  mensaje: "Datos del solicitante no validos",
+                  detalle: vars.resp_validacion_solicitante.mensaje default "NIF o empresa no reconocidos en el sistema"
+                }]]></ee:set-payload>
+              </ee:message>
+              <ee:variables>
+                <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+          </when>
+
+          <!-- Solicitante valido: continuar -->
+          <otherwise>
+
+            <!-- ─── PASO 3: Verificar existencia de la factura ─── -->
+            <set-payload value="#[{}]" doc:name="Reset payload para consulta factura"/>
+            <http:request method="GET" config-ref="REST_API_Anulacion_Config"
+                          path="#['/facturas/' ++ (vars.datos_entrada.idFactura as String)]"
+                          doc:name="Consultar existencia de la factura">
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]></http:headers>
+            </http:request>
+            <set-variable variableName="factura_encontrada" value="#[payload]" doc:name="Set factura_encontrada"/>
+
+            <choice doc:name="Factura existe?">
+              <!-- Factura no encontrada -->
+              <when expression="#[(vars.factura_encontrada.idFactura default null) == null]">
+
+                <http:request method="POST" config-ref="REST_API_Anulacion_Config"
+                              path="/comunicaciones/enviar"
+                              doc:name="Notificar factura no encontrada">
+                  <http:body><![CDATA[#[%dw 2.0 output application/json ---
+                  {
+                    destinatario: vars.datos_entrada.email,
+                    asunto: "Solicitud de anulacion rechazada - Factura no encontrada",
+                    cuerpo: "Su solicitud de anulacion de la factura " ++ vars.datos_entrada.numeroFactura ++ " ha sido rechazada porque no existe en el sistema.\n\nSistema de Facturacion G3"
+                  }]]></http:body>
+                  <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                </http:request>
+
+                <ee:transform doc:name="Respuesta factura no encontrada">
+                  <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
+                    {
+                      codigo: "ERR-404",
+                      mensaje: "Factura no encontrada",
+                      detalle: "No existe ninguna factura con id " ++ (vars.datos_entrada.idFactura as String) ++ " en el sistema"
+                    }]]></ee:set-payload>
+                  </ee:message>
+                  <ee:variables>
+                    <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                  </ee:variables>
+                </ee:transform>
+              </when>
+
+              <!-- Factura encontrada: continuar -->
+              <otherwise>
+
+                <!-- ─── PASO 4: Consultar estado actual de la factura ─── -->
+                <set-variable variableName="estado_actual" value="#[vars.factura_encontrada.estado]" doc:name="Set estado_actual"/>
+                <set-variable variableName="numero_factura_bd" value="#[vars.factura_encontrada.numeroFactura]" doc:name="Set numero_factura_bd"/>
+
+                <!-- ─── PASO 5: Comprobar que la factura es anulable ─── -->
+                <choice doc:name="Factura ya anulada?">
+                  <!-- Ya anulada: devolver 409 Conflict -->
+                  <when expression="#[(vars.estado_actual default '') == 'ANULADA']">
+
+                    <http:request method="POST" config-ref="REST_API_Anulacion_Config"
+                                  path="/comunicaciones/enviar"
+                                  doc:name="Notificar factura ya anulada">
+                      <http:body><![CDATA[#[%dw 2.0 output application/json ---
+                      {
+                        destinatario: vars.datos_entrada.email,
+                        asunto: "Solicitud de anulacion rechazada - Factura ya anulada",
+                        cuerpo: "Su solicitud de anulacion de la factura " ++ vars.datos_entrada.numeroFactura ++ " no puede procesarse porque dicha factura ya se encuentra en estado ANULADA.\n\nSistema de Facturacion G3"
+                      }]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                    </http:request>
+
+                    <ee:transform doc:name="Respuesta factura ya anulada">
+                      <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
+                        {
+                          codigo: "ERR-409",
+                          mensaje: "Factura ya anulada",
+                          detalle: "La factura " ++ vars.datos_entrada.numeroFactura ++ " ya se encuentra en estado ANULADA"
+                        }]]></ee:set-payload>
+                      </ee:message>
+                      <ee:variables>
+                        <ee:set-variable variableName="httpStatus">409</ee:set-variable>
+                      </ee:variables>
+                    </ee:transform>
+                  </when>
+
+                  <!-- Factura anulable: proceder -->
+                  <otherwise>
+
+                    <!-- ─── PASO 6: Enviar solicitud de anulacion a Agencia Tributaria ─── -->
+                    <set-payload value="#[{}]" doc:name="Reset payload para notificacion AT"/>
+                    <http:request method="POST" config-ref="REST_API_Anulacion_Config"
+                                  path="/comunicaciones/enviar"
+                                  doc:name="Notificar Agencia Tributaria">
+                      <http:body><![CDATA[#[%dw 2.0 output application/json ---
+                      {
+                        destinatario: "agencia@tributaria.es",
+                        asunto: "Solicitud de anulacion de factura " ++ vars.datos_entrada.numeroFactura ++ " - " ++ (vars.datos_entrada.nif default ""),
+                        cuerpo: "Se comunica la anulacion de la factura con los siguientes datos:\n\n- Numero de factura: " ++ vars.datos_entrada.numeroFactura ++ "\n- ID en sistema: " ++ (vars.datos_entrada.idFactura as String) ++ "\n- NIF del emisor: " ++ (vars.datos_entrada.nif default "") ++ "\n- Estado anterior: " ++ (vars.estado_actual default "DESCONOCIDO") ++ "\n- Motivo de anulacion: " ++ (vars.datos_entrada.motivoAnulacion default "No especificado") ++ "\n\nSistema de Facturacion Electronica G3"
+                      }]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                    </http:request>
+
+                    <!-- ─── PASO 7: Actualizar estado de la factura a ANULADA ─── -->
+                    <set-payload value="#[{}]" doc:name="Reset payload para actualizar estado"/>
+                    <http:request method="POST" config-ref="REST_API_Anulacion_Config"
+                                  path="#['/facturas/' ++ (vars.datos_entrada.idFactura as String) ++ '/actualizar-estado']"
+                                  doc:name="Actualizar estado a ANULADA">
+                      <http:body><![CDATA[#[%dw 2.0 output application/json ---
+                      {
+                        nuevoEstado: "ANULADA",
+                        motivo: vars.datos_entrada.motivoAnulacion default "Anulacion solicitada por el emisor"
+                      }]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                    </http:request>
+
+                    <!-- ─── PASO 8: Notificar al emisor el resultado ─── -->
+                    <set-payload value="#[{}]" doc:name="Reset payload para notificacion emisor"/>
+                    <http:request method="POST" config-ref="REST_API_Anulacion_Config"
+                                  path="/comunicaciones/enviar"
+                                  doc:name="Notificar al emisor">
+                      <http:body><![CDATA[#[%dw 2.0 output application/json ---
+                      {
+                        destinatario: vars.datos_entrada.email,
+                        asunto: "Anulacion de factura " ++ vars.datos_entrada.numeroFactura ++ " completada",
+                        cuerpo: "Su factura " ++ vars.datos_entrada.numeroFactura ++ " ha sido anulada correctamente.\n\nLa solicitud de anulacion ha sido comunicada a la Agencia Tributaria.\n\nEstado final: ANULADA\n\nSistema de Facturacion Electronica G3"
+                      }]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                    </http:request>
+
+                    <!-- Registrar evento de auditoria: anulacion exitosa -->
+                    <db:insert doc:name="Registrar evento anulacion exitosa" config-ref="Anulacion_Database_Config">
+                      <db:sql><![CDATA[INSERT INTO auditoria_eventos (tipo_evento, descripcion, fecha, origen)
+                        VALUES (:tipo, :desc, NOW(), 'mulesoft-anulacion')]]></db:sql>
+                      <db:input-parameters><![CDATA[#[{
+                        'tipo': 'ANULACION_EXITOSA',
+                        'desc': 'Factura ' ++ vars.datos_entrada.numeroFactura ++ ' anulada correctamente. ID: ' ++ (vars.datos_entrada.idFactura as String)
+                      }]]]></db:input-parameters>
+                    </db:insert>
+
+                    <!-- Respuesta final exitosa -->
+                    <ee:transform doc:name="Respuesta anulacion exitosa">
+                      <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
+                        {
+                          idFactura: vars.datos_entrada.idFactura,
+                          numeroFactura: vars.datos_entrada.numeroFactura,
+                          estadoFinal: "ANULADA",
+                          mensaje: "Factura anulada correctamente. Notificacion enviada a la Agencia Tributaria y al emisor."
+                        }]]></ee:set-payload>
+                      </ee:message>
+                      <ee:variables>
+                        <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+                      </ee:variables>
+                    </ee:transform>
+
+                  </otherwise>
+                </choice>
+              </otherwise>
+            </choice>
+          </otherwise>
+        </choice>
+      </otherwise>
+    </choice>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         MANEJO GLOBAL DE ERRORES DEL FLUJO DE ANULACION
+         ═══════════════════════════════════════════════════════════ -->
+    <error-handler>
+      <on-error-propagate enableNotifications="true" logException="true" type="ANY" doc:name="On Error Propagate Anulacion">
+        <!-- Registrar error tecnico en auditoria -->
+        <db:insert doc:name="Registrar error en auditoria" config-ref="Anulacion_Database_Config">
+          <db:sql><![CDATA[INSERT INTO auditoria_errores (tipo_error, descripcion, fecha, origen)
+            VALUES (:tipo, :desc, NOW(), 'mulesoft-anulacion')]]></db:sql>
+          <db:input-parameters><![CDATA[#[{
+            'tipo': (error.errorType.identifier default 'ERROR_DESCONOCIDO'),
+            'desc': (error.description default 'Error no especificado')[0 to 254]
+          }]]]></db:input-parameters>
+        </db:insert>
+
+        <!-- Enviar email de error via FakeSMTP -->
+        <email:send config-ref="Email_SMTP_Anulacion"
+                    fromAddress="facturacion@sistema-g3.com"
+                    subject="Error durante el flujo de anulacion de factura"
+                    doc:name="Email error anulacion">
+          <email:to-addresses>
+            <email:to-address value="#[vars.datos_entrada.email default 'admin@sistema-g3.com']"/>
+          </email:to-addresses>
+          <email:body contentTransferEncoding="8BIT">
+            <email:content><![CDATA[Se ha producido un error durante el flujo de anulacion de factura. Descripcion: #[error.description default 'Error desconocido']]]></email:content>
+          </email:body>
+        </email:send>
+
+        <!-- Respuesta de error generica -->
+        <ee:transform doc:name="Respuesta error general">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
+            {
+              codigo: "ERR-500",
+              mensaje: "Error tecnico durante el flujo de anulacion de factura",
+              detalle: error.description default ""
+            }]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-propagate>
+    </error-handler>
+
+  </flow>
+</mule>

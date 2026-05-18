@@ -24,8 +24,11 @@ server.use('/cliente', express.static(path.join(__dirname, 'cliente')));
 
 // --- Proxy hacia MuleSoft (evita CORS) ---
 server.use('/proxy/mule', express.json(), (req, res) => {
-  // Detectar si es para cobro (14102) o emisión (9092)
-  const puerto = req.url.includes('cobro') ? 14102 : 9092;
+  // Detectar puerto MuleSoft segun el flujo:
+  //   anulacion → 9095 | cobro → 14102 | emision/consulta/otros → 9092
+  const puerto = req.url.includes('anulacion') ? 9095
+               : req.url.includes('cobro') ? 14102
+               : 9092;
   const muleUrl = `http://localhost:${puerto}/api${req.url}`;
   const headers = { 'Content-Type': 'application/json' };
   if (req.headers['wskey']) headers['WSKey'] = req.headers['wskey'];
