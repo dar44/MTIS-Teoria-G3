@@ -15,17 +15,15 @@ async function validarWSKey(wsKey) {
 
     if (!wsKey) {
         throw {
-            status: 400,
-            message: 'WSKey no proporcionada en la cabecera HTTP',
-            salida: 'Error: La cabecera WSKey es obligatoria'
+            status: 401,
+            error: { error: 'WSKey no valida. Acceso no autorizado al sistema de anulacion de facturas.' }
         };
     }
 
     if (wsKey.trim() !== VALID_WS_KEY) {
         throw {
-            status: 403,
-            message: 'Acceso no autorizado',
-            salida: 'Error: WSKey inválida. Acceso denegado'
+            status: 401,
+            error: { error: 'WSKey no valida. Acceso no autorizado al sistema de anulacion de facturas.' }
         };
     }
 }

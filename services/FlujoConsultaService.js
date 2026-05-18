@@ -6,6 +6,7 @@ const { validarWSKey } = require('../utils/Utils');
 const GestorArchivosService = require('./GestorArchivosService');
 const AuditoriaService = require('./AuditoriaService');
 const GestorRespuestasService = require('./GestorRespuestasService');
+const ComunicacionService = require('./ComunicacionService');
 
 /**
  * Iniciar flujo de consulta de factura
@@ -60,6 +61,23 @@ const iniciarFlujoConsulta = ({ consultaFacturaRequest, body, WSKey }) => new Pr
       }
 
       // Respuesta conforme a ProcesoConsultaResponse
+      // Intentar notificar al solicitante (no bloquear si falla)
+      (async () => {
+        try {
+          if (ruta) {
+            await ComunicacionService.enviarComunicacion({
+              body: {
+                destinatario: detalle && detalle.empresa_email ? detalle.empresa_email : undefined,
+                asunto: `Consulta factura ${idFactura}`,
+                cuerpo: `Su consulta de la factura ${idFactura} ha sido procesada. Archivo: ${ruta}`,
+                payload: { idFactura: Number(idFactura), ruta }
+              },
+              WSKey,
+            }).catch(() => {});
+          }
+        } catch (_) { /* ignore notify errors */ }
+      })();
+
       resolve(Service.successResponse({
         idFactura: Number(idFactura),
         numeroFactura: detalle ? detalle.numero_factura : factura.numero_factura,
