@@ -1209,7 +1209,7 @@ components:
       name: WSKey
       in: header
       description: Clave de autenticación WSKey
-      required: true
+      required: false
       style: simple
       explode: false
       schema:
