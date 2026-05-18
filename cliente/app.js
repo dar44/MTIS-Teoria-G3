@@ -339,13 +339,24 @@ function detectarPasoFallido(status, body, flujo = 'emision') {
     return { paso: 0, estado: 'error' };
   }
   // Errores en CONSULTA
-  else {
+  else if (flujo === 'consulta') {
     if (msg.includes('wskey')) return { paso: 0, estado: 'error' };
     if (msg.includes('error_formato') || msg.includes('inválido')) return { paso: 1, estado: 'error' };
     if (msg.includes('recuperacion') || msg.includes('fallo')) return { paso: 2, estado: 'error' };
     if (msg.includes('no encontrada') || msg.includes('no existe') || status === 404) return { paso: 3, estado: 'error' };
     if (msg.includes('xml')) return { paso: 4, estado: 'error' };
     if (msg.includes('aviso') || msg.includes('notify')) return { paso: 5, estado: 'error' };
+    return { paso: 0, estado: 'error' };
+  }
+  // Errores en REPORTES
+  else {
+    if (msg.includes('wskey')) return { paso: 0, estado: 'error' };
+    if (msg.includes('validar-acceso')) return { paso: 1, estado: 'error' };
+    if (msg.includes('validar-rango-fechas')) return { paso: 2, estado: 'error' };
+    if (msg.includes('obtener-volumen')) return { paso: 3, estado: 'error' };
+    if (msg.includes('registrar')) return { paso: 4, estado: 'error' };
+    if (msg.includes('generar-pdf')) return { paso: 5, estado: 'error' };
+    if (msg.includes('notificar')) return { paso: 6, estado: 'error' };
     return { paso: 0, estado: 'error' };
   }
 }
