@@ -28,6 +28,7 @@
               <option value="emision">📄 Flujo de Emisión</option>
               <option value="cobro">💳 Flujo de Cobro</option>
               <option value="consulta">🔍 Flujo de Consulta</option>
+              <option value="reportes">📊 Generación Reportes</option>
             </select>
           </div>
           <div class="field">
@@ -218,6 +219,48 @@
             <div class="field">
               <label for="con-usuarioId">Usuario ID</label>
               <input type="text" id="con-usuarioId" value="USR-001" placeholder="Identificador del solicitante">
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- SECCIÓN REPORTES (oculta por defecto) -->
+      <div id="seccion-reportes" style="display:none">
+        <div class="two-col">
+          <!-- Datos Autenticacion -->
+          <section class="card">
+            <h2>🔑 Datos Autenticación</h2>
+            <div class="field">
+              <label for="rep-usuarioId">Usuario ID *</label>
+              <input type="text" id="rep-usuarioId" value="USR-001" placeholder="ID del usuario administrador">
+            </div>
+            <div class="field">
+              <label for="rep-email">Email Notificación *</label>
+              <input type="email" id="rep-email" value="admin@sistema-g3.com">
+            </div>
+          </section>
+
+          <!-- Filtros del Reporte -->
+          <section class="card">
+            <h2>📊 Filtros del Reporte</h2>
+            <div class="form-row">
+              <div class="field">
+                <label for="rep-fechaInicio">Fecha Inicio *</label>
+                <input type="date" id="rep-fechaInicio">
+              </div>
+              <div class="field">
+                <label for="rep-fechaFin">Fecha Fin *</label>
+                <input type="date" id="rep-fechaFin">
+              </div>
+            </div>
+            <div class="field">
+              <label for="rep-categoria">Categoría *</label>
+              <select id="rep-categoria">
+                <option value="GENERAL" selected>General (Todas)</option>
+                <option value="ORDINARIA">Ordinaria</option>
+                <option value="RECTIFICATIVA">Rectificativa</option>
+                <option value="RECAPITULATIVA">Recapitulativa</option>
+              </select>
             </div>
           </section>
         </div>

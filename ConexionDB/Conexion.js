@@ -303,6 +303,62 @@ async function crearFacturaRectificativa(factura) {
     };
 }
 
+/**
+ * Crea un reporte de generación de facturación
+ */
+async function crearReporte(reporte) {
+    const sql = `
+    INSERT INTO reportes
+    (
+      usuario_id,
+      fecha_inicio,
+      fecha_fin,
+      categoria,
+      numero_registros,
+      monto_total,
+      estado,
+      url_documento
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+    const params = [
+        reporte.usuarioId,
+        reporte.fechaInicio,
+        reporte.fechaFin,
+        reporte.categoria || 'GENERAL',
+        reporte.numeroRegistros || 0,
+        reporte.montoTotal || 0,
+        reporte.estado || 'GENERADO',
+        reporte.urlDocumento || null
+    ];
+
+    const result = await ejecutarQuery(sql, params);
+
+    return {
+        idReporte: result.insertId,
+        ...reporte
+    };
+}
+
+/**
+ * Obtiene un reporte por su ID
+ */
+async function obtenerReportePorId(idReporte) {
+    const sql = 'SELECT * FROM reportes WHERE id = ? LIMIT 1';
+    const results = await ejecutarQuery(sql, [idReporte]);
+    return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * Actualiza la URL del documento PDF de un reporte
+ */
+async function actualizarUrlReporte(idReporte, urlDocumento) {
+    const sql = 'UPDATE reportes SET url_documento = ?, estado = ? WHERE id = ?';
+    const result = await ejecutarQuery(sql, [urlDocumento, 'COMPLETADO', idReporte]);
+    return { idReporte, urlDocumento, filasAfectadas: result.affectedRows };
+}
+
 module.exports = {
     connection,
     ejecutarQuery,
@@ -319,4 +375,7 @@ module.exports = {
     ,crearDocumentoPago
     ,obtenerDocumentoPagoPorId
     ,listarPagosPorFactura
+    ,crearReporte
+    ,obtenerReportePorId
+    ,actualizarUrlReporte
 };

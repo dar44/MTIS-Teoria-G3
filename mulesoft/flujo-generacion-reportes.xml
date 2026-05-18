@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:apikit-soap="http://www.mulesoft.org/schema/mule/apikit-soap"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/apikit-soap http://www.mulesoft.org/schema/mule/apikit-soap/current/mule-apikit-soap.xsd">
+
+  <http:listener-config name="reportes-httpListenerConfig" doc:name="Listener HTTP Reportes Config">
+    <http:listener-connection host="0.0.0.0" port="14103" doc:name="Conexion Listener Reportes"/>
+  </http:listener-config>
+
+  <http:request-config name="REST_API_REPORTES_Config" doc:name="Request API Reportes Config">
+    <http:request-connection host="localhost" port="7777" doc:name="Conexion API Reportes"/>
+  </http:request-config>
+
+  <apikit-soap:config name="soapkit-config" port="GeneracionReportesPort" service="GeneracionReportesService" wsdlLocation="GeneracionReportes.wsdl" doc:name="APIkit for SOAP Router" />
+
+  <flow name="api-main">
+    <http:listener path="/api/reportes/solicitar" config-ref="reportes-httpListenerConfig" doc:name="Listener APIKit SOAP">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+    
+    <ee:transform doc:name="Inicializar Headers CORS">
+      <ee:variables>
+        <ee:set-variable variableName="outboundHeaders" doc:name="Set outboundHeaders"><![CDATA[%dw 2.0
+output application/java
+--- {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept"
+}]]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+    
+    <choice doc:name="Manejar Preflight OPTIONS">
+      <when expression="#[attributes.method == 'OPTIONS']">
+        <ee:transform doc:name="Respuesta OK OPTIONS">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output text/plain
+---
+"OK"]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+      <otherwise>
+        <apikit-soap:router config-ref="soapkit-config" doc:name="Enrutador SOAP" />
+      </otherwise>
+    </choice>
+  </flow>
+
+  <flow name="solicitarGeneracionReporte:\soapkit-config">
+    <ee:transform doc:name="Extraer variables de SOAP request">
+      <ee:variables>
+        <ee:set-variable variableName="InputWSKey"><![CDATA[%dw 2.0
+output application/java
+---
+payload.body.solicitarGeneracionReporte.auth.wsKey default '']]></ee:set-variable>
+        <ee:set-variable variableName="usuarioId"><![CDATA[%dw 2.0
+output application/java
+---
+payload.body.solicitarGeneracionReporte.auth.usuarioId default '']]></ee:set-variable>
+        <ee:set-variable variableName="fechaInicio"><![CDATA[%dw 2.0
+output application/java
+---
+payload.body.solicitarGeneracionReporte.periodo.fechaInicio default '']]></ee:set-variable>
+        <ee:set-variable variableName="fechaFin"><![CDATA[%dw 2.0
+output application/java
+---
+payload.body.solicitarGeneracionReporte.periodo.fechaFin default '']]></ee:set-variable>
+        <ee:set-variable variableName="categoria"><![CDATA[%dw 2.0
+output application/java
+---
+payload.body.solicitarGeneracionReporte.categoria default 'GENERAL']]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+
+    <choice doc:name="Validar WSKey Presente">
+      <when expression="#[isEmpty(vars.InputWSKey)]" doc:name="WSKey Ausente">
+        <ee:transform doc:name="Construir Respuesta SOAP Error WSKey">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns gen http://www.mtis.org/GeneracionReportes/
+---
+{
+  soapenv#Envelope: {
+    soapenv#Body: {
+      gen#solicitarGeneracionReporteResponse: {
+        resultado: {
+          exito: false,
+          mensaje: "WSKey no proporcionada en la peticion SOAP",
+          codigoError: 401
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+          </ee:message>
+        </ee:transform>
+      </when>
+      <otherwise doc:name="Flujo Principal de Node">
+
+        <!-- Paso 1: Validar Acceso -->
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/validar-acceso" doc:name="Validar Acceso">
+          <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  usuarioId: vars.usuarioId
+}]]]></http:body>
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+        </http:request>
+
+        <!-- Paso 2: Validar Rango Fechas -->
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/validar-rango-fechas" doc:name="Validar Rango Fechas">
+          <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  fechaInicio: vars.fechaInicio,
+  fechaFin: vars.fechaFin
+}]]]></http:body>
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+        </http:request>
+
+        <!-- Paso 3: Obtener Volumen Facturacion -->
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/obtener-volumen" doc:name="Obtener Volumen Facturacion">
+          <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  fechaInicio: vars.fechaInicio,
+  fechaFin: vars.fechaFin,
+  categoria: vars.categoria
+}]]]></http:body>
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+        </http:request>
+        <set-variable variableName="respuesta_volumen" value="#[payload]" doc:name="Guardar Respuesta Volumen"/>
+
+        <!-- Paso 4: Registrar Reporte -->
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/registrar" doc:name="Registrar Reporte">
+          <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  contenido: vars.respuesta_volumen.datos,
+  usuarioId: vars.usuarioId,
+  fechaInicio: vars.fechaInicio,
+  fechaFin: vars.fechaFin
+}]]]></http:body>
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+        </http:request>
+        <set-variable variableName="respuesta_registro" value="#[payload]" doc:name="Guardar Respuesta Registro"/>
+        <set-variable variableName="idReporte" value="#[vars.respuesta_registro.idReporte]" doc:name="Guardar ID Reporte"/>
+
+        <!-- Paso 5: Generar PDF Reporte -->
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="#['/reportes/generar-pdf/' ++ (vars.idReporte as String)]" doc:name="Generar PDF Reporte">
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+        </http:request>
+        <set-variable variableName="respuesta_pdf" value="#[payload]" doc:name="Guardar Respuesta PDF"/>
+
+        <!-- Paso 6: Enviar Notificacion Reporte -->
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/notificar" doc:name="Enviar Notificacion Reporte">
+          <http:body><![CDATA[#[%dw 2.0
+output application/json
+--- {
+  usuarioId: vars.usuarioId,
+  emailDestinatario: "admin@sistema-g3.com",
+  urlDocumento: vars.respuesta_pdf.urlDocumento
+}]]]></http:body>
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
+        </http:request>
+
+        <ee:transform doc:name="Construir Respuesta SOAP Exito">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns gen http://www.mtis.org/GeneracionReportes/
+---
+{
+  soapenv#Envelope: {
+    soapenv#Body: {
+      gen#solicitarGeneracionReporteResponse: {
+        resultado: {
+          exito: true,
+          mensaje: "Reporte generado y notificado correctamente. URL: " ++ (vars.respuesta_pdf.urlDocumento default ""),
+          codigoError: 0
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+          </ee:message>
+        </ee:transform>
+
+      </otherwise>
+    </choice>
+
+    <error-handler doc:name="Manejo de Error SOAP">
+      <on-error-continue type="ANY" doc:name="Controlar Error">
+        <ee:transform doc:name="Construir Respuesta SOAP Error">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/xml
+ns soapenv http://schemas.xmlsoap.org/soap/envelope/
+ns gen http://www.mtis.org/GeneracionReportes/
+---
+{
+  soapenv#Envelope: {
+    soapenv#Body: {
+      soapenv#Fault: {
+        faultcode: "soapenv:Server",
+        faultstring: error.description default (error.message default "Error no controlado"),
+        detail: {
+          gen#errorDetalle: error.cause.description default ""
+        }
+      }
+    }
+  }
+}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+             <ee:set-variable variableName="httpStatus" doc:name="Status 500">500</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </on-error-continue>
+    </error-handler>
+  </flow>
+
+</mule>

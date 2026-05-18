@@ -36,6 +36,16 @@ const PASOS_BPMN_CONSULTA = [
   'Fin',
 ];
 
+const PASOS_BPMN_REPORTES = [
+  'Validar WSKey',
+  'Validar Acceso (Usuario)',
+  'Validar Rango de Fechas',
+  'Obtener Volumen de Facturación',
+  'Registrar Reporte en BD',
+  'Generar PDF del Reporte',
+  'Enviar Notificación por Email',
+];
+
 // ===== INICIALIZACIÓN =====
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -76,6 +86,7 @@ function cambiarFlujo() {
     seccionEmision.style.display = 'grid';
     seccionCobro.style.display = 'none';
     seccionConsulta.style.display = 'none';
+    if (document.getElementById('seccion-reportes')) document.getElementById('seccion-reportes').style.display = 'none';
     btnEnviar.textContent = '🚀 Iniciar Flujo de Emisión';
     btnWSKey.style.display = 'block';
     btnEmpresa.style.display = 'block';
@@ -87,6 +98,7 @@ function cambiarFlujo() {
     seccionEmision.style.display = 'none';
     seccionCobro.style.display = 'block';
     seccionConsulta.style.display = 'none';
+    if (document.getElementById('seccion-reportes')) document.getElementById('seccion-reportes').style.display = 'none';
     btnEnviar.textContent = '💳 Iniciar Flujo de Cobro';
     btnWSKey.style.display = 'none';
     btnEmpresa.style.display = 'none';
@@ -98,12 +110,25 @@ function cambiarFlujo() {
     seccionEmision.style.display = 'none';
     seccionCobro.style.display = 'none';
     seccionConsulta.style.display = 'block';
+    if (document.getElementById('seccion-reportes')) document.getElementById('seccion-reportes').style.display = 'none';
     btnEnviar.textContent = '🔍 Iniciar Flujo de Consulta';
     btnWSKey.style.display = 'none';
     btnEmpresa.style.display = 'none';
     endpointSelect.innerHTML = `
       <option value="http://localhost:7777/proxy/mule/flujo-consulta/iniciar">MuleSoft via proxy (puerto 9092)</option>
       <option value="http://localhost:7777/flujo-consulta/iniciar">Node.js directo (puerto 7777)</option>
+    `;
+  } else if (flujo === 'reportes') {
+    seccionEmision.style.display = 'none';
+    seccionCobro.style.display = 'none';
+    seccionConsulta.style.display = 'none';
+    if (document.getElementById('seccion-reportes')) document.getElementById('seccion-reportes').style.display = 'block';
+    btnEnviar.textContent = '📊 Solicitar Generación de Reportes';
+    btnWSKey.style.display = 'none';
+    btnEmpresa.style.display = 'none';
+    endpointSelect.innerHTML = `
+      <option value="http://localhost:14103/api/reportes/solicitar">MuleSoft directo (puerto 14103)</option>
+      <option value="http://localhost:7777/proxy/mule/reportes/solicitar">MuleSoft via proxy (puerto 7777)</option>
     `;
   }
 }
@@ -168,6 +193,20 @@ function getFormDataConsulta() {
   };
 }
 
+function getFormDataReportes() {
+  return {
+    auth: {
+      usuarioId: document.getElementById('rep-usuarioId').value,
+    },
+    periodo: {
+      fechaInicio: document.getElementById('rep-fechaInicio').value,
+      fechaFin: document.getElementById('rep-fechaFin').value,
+    },
+    categoria: document.getElementById('rep-categoria').value,
+    emailContacto: document.getElementById('rep-email').value,
+  };
+}
+
 // ===== TIMELINE =====
 
 function mostrarTimeline(pasoActual, estado, flujo = 'emision') {
@@ -179,6 +218,7 @@ function mostrarTimeline(pasoActual, estado, flujo = 'emision') {
   let PASOS;
   if (flujo === 'emision') PASOS = PASOS_BPMN_EMISION;
   else if (flujo === 'cobro') PASOS = PASOS_BPMN_COBRO;
+  else if (flujo === 'reportes') PASOS = PASOS_BPMN_REPORTES;
   else PASOS = PASOS_BPMN_CONSULTA;
 
   PASOS.forEach((paso, i) => {
@@ -217,6 +257,7 @@ function detectarPasoFallido(status, body, flujo = 'emision') {
     let PASOS;
     if (flujo === 'emision') PASOS = PASOS_BPMN_EMISION;
     else if (flujo === 'cobro') PASOS = PASOS_BPMN_COBRO;
+    else if (flujo === 'reportes') PASOS = PASOS_BPMN_REPORTES;
     else PASOS = PASOS_BPMN_CONSULTA;
     return { paso: PASOS.length - 1, estado: 'done' };
   }
@@ -309,9 +350,11 @@ function mostrarResultado(status, body, elapsed, flujo = 'emision') {
 function mostrarCurl(url, wskey, bodyObj) {
   const section = document.getElementById('curl-section');
   section.style.display = 'block';
-  const bodyStr = JSON.stringify(bodyObj);
+  const isXml = typeof bodyObj === 'string' && bodyObj.includes('<soapenv:Envelope');
+  const bodyStr = isXml ? bodyObj : JSON.stringify(bodyObj);
+  const cType = isXml ? 'text/xml' : 'application/json';
   document.getElementById('curl-cmd').textContent =
-    `curl -X POST "${url}" \\\n  -H "Content-Type: application/json" \\\n  -H "WSKey: ${wskey}" \\\n  -d '${bodyStr}'`;
+    `curl -X POST "${url}" \\\n  -H "Content-Type: ${cType}" \\\n  -H "WSKey: ${wskey}" \\\n  -d '${bodyStr}'`;
 }
 
 // ===== HACER PETICIÓN =====
@@ -328,20 +371,55 @@ async function hacerPeticion(url, wskey, body, flujo = 'emision') {
 
   const start = Date.now();
   try {
+    let finalBody = body;
+    let headers = { 'Content-Type': 'application/json', 'WSKey': wskey };
+    
+    if (flujo === 'reportes') {
+      headers['Content-Type'] = 'text/xml';
+      finalBody = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:gen="http://www.mtis.org/GeneracionReportes/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <gen:solicitarGeneracionReporte>
+         <auth>
+            <wsKey>${wskey}</wsKey>
+            <usuarioId>${body.auth.usuarioId}</usuarioId>
+         </auth>
+         <periodo>
+            <fechaInicio>${body.periodo.fechaInicio}</fechaInicio>
+            <fechaFin>${body.periodo.fechaFin}</fechaFin>
+         </periodo>
+         <categoria>${body.categoria}</categoria>
+      </gen:solicitarGeneracionReporte>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+    } else {
+      finalBody = JSON.stringify(body);
+    }
+
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'WSKey': wskey },
-      body: JSON.stringify(body),
+      headers: headers,
+      body: finalBody,
     });
     const elapsed = Date.now() - start;
     
     // Leer el body UNA SOLA VEZ
     const text = await res.text();
     let data;
-    try { 
-      data = JSON.parse(text); 
-    } catch { 
-      data = { rawResponse: text }; 
+    if (flujo === 'reportes') {
+      // Extracción rudimentaria del XML para parsear la respuesta SOAP
+      data = { rawXml: text };
+      if (text.includes('exito')) {
+        data.exito = text.includes('<exito>true</exito>');
+        const matchMensaje = text.match(/<mensaje>(.*?)<\/mensaje>/);
+        if (matchMensaje) data.mensaje = matchMensaje[1];
+      }
+    } else {
+      try { 
+        data = JSON.parse(text); 
+      } catch { 
+        data = { rawResponse: text }; 
+      }
     }
     
     mostrarResultado(res.status, data, elapsed, flujo);
@@ -368,6 +446,8 @@ function enviarPeticion() {
     body = getFormDataEmision();
   } else if (flujo === 'cobro') {
     body = getFormDataCobro();
+  } else if (flujo === 'reportes') {
+    body = getFormDataReportes();
   } else {
     body = getFormDataConsulta();
   }

@@ -80,6 +80,20 @@ CREATE TABLE IF NOT EXISTS auditoria_errores (
   FOREIGN KEY (factura_id) REFERENCES facturas(id)
 );
 
+-- 🗂️ Tabla de reportes de generación de facturación 🗂️
+CREATE TABLE IF NOT EXISTS reportes (
+  id              INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id      VARCHAR(100)   NOT NULL,
+  fecha_inicio    DATE           NOT NULL,
+  fecha_fin       DATE           NOT NULL,
+  categoria       VARCHAR(100)   NOT NULL DEFAULT 'GENERAL',
+  numero_registros INT           NOT NULL DEFAULT 0,
+  monto_total     DECIMAL(15,2)  NOT NULL DEFAULT 0.00,
+  estado          VARCHAR(30)    NOT NULL DEFAULT 'PENDIENTE',
+  url_documento   VARCHAR(500),
+  creado_at       DATETIME       DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ============================================
 -- Datos iniciales
 -- ============================================

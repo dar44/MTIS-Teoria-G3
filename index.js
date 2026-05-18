@@ -24,8 +24,16 @@ server.use('/cliente', express.static(path.join(__dirname, 'cliente')));
 
 // --- Proxy hacia MuleSoft (evita CORS) ---
 server.use('/proxy/mule', express.json(), (req, res) => {
-  // Detectar si es para cobro (14102) o emisión (9092)
-  const puerto = req.url.includes('cobro') ? 14102 : 9092;
+  // Detectar puerto MuleSoft según el flujo:
+  //   /cobros  -> 14102  |  /reportes -> 14103  |  resto -> 9092
+  let puerto;
+  if (req.url.includes('cobro')) {
+    puerto = 14102;
+  } else if (req.url.includes('reporte')) {
+    puerto = 14103;
+  } else {
+    puerto = 9092;
+  }
   const muleUrl = `http://localhost:${puerto}/api${req.url}`;
   const headers = { 'Content-Type': 'application/json' };
   if (req.headers['wskey']) headers['WSKey'] = req.headers['wskey'];
@@ -49,8 +57,9 @@ server.use('/proxy/mule', express.json(), (req, res) => {
 });
 
 // --- Configuración oas3-tools ---
-// Rutas directas para endpoints de pagos (fallback cuando OpenAPI no mapea correctamente)
+// Rutas directas (fallback cuando OpenAPI no mapea correctamente)
 const FlujoCobroController = require('./controllers/FlujoCobroController');
+const GeneracionReportesController = require('./controllers/GeneracionReportesController');
 
 server.get('/facturas/:idFactura/pagos', async (req, res) => {
   try {
@@ -68,6 +77,42 @@ server.get('/pagos/:idPago', async (req, res) => {
     console.error('Fallback route /pagos/:idPago error:', e);
     res.status(500).json({ error: 'Error interno' });
   }
+});
+
+// ─── Rutas directas: Generación de Reportes ─────────────────────────────────
+server.post('/reportes/validar-acceso', express.json(), async (req, res) => {
+  try { await GeneracionReportesController.validarAccesoReporte(req, res); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Error interno' }); }
+});
+
+server.post('/reportes/validar-rango-fechas', express.json(), async (req, res) => {
+  try { await GeneracionReportesController.validarRangoFechasReporte(req, res); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Error interno' }); }
+});
+
+server.post('/reportes/obtener-volumen', express.json(), async (req, res) => {
+  try { await GeneracionReportesController.obtenerVolumenFacturacion(req, res); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Error interno' }); }
+});
+
+server.post('/reportes/registrar', express.json(), async (req, res) => {
+  try { await GeneracionReportesController.registrarReporte(req, res); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Error interno' }); }
+});
+
+server.post('/reportes/generar-pdf/:idReporte', express.json(), async (req, res) => {
+  try { await GeneracionReportesController.generarDocumentoPDFReporte(req, res); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Error interno' }); }
+});
+
+server.post('/reportes/notificar', express.json(), async (req, res) => {
+  try { await GeneracionReportesController.enviarNotificacionReporte(req, res); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Error interno' }); }
+});
+
+server.get('/reportes/:idReporte', async (req, res) => {
+  try { await GeneracionReportesController.obtenerReportePorId(req, res); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Error interno' }); }
 });
 
 const options = {

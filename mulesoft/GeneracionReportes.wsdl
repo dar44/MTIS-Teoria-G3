@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:tns="http://www.mtis.org/GeneracionReportes/"
+                  xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                  name="GeneracionReportes"
+                  targetNamespace="http://www.mtis.org/GeneracionReportes/">
+  <wsdl:types>
+    <xsd:schema targetNamespace="http://www.mtis.org/GeneracionReportes/">
+
+      <xsd:complexType name="PeriodoConsulta">
+        <xsd:sequence>
+          <xsd:element name="fechaInicio" type="xsd:date"/>
+          <xsd:element name="fechaFin" type="xsd:date"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="ContextoUsuario">
+        <xsd:sequence>
+          <xsd:element name="wsKey" type="xsd:string"/>
+          <xsd:element name="usuarioId" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="ResumenFacturacion">
+        <xsd:sequence>
+          <xsd:element name="numeroRegistros" type="xsd:int"/>
+          <xsd:element name="montoTotalEstimado" type="xsd:decimal" minOccurs="0"/>
+          <xsd:element name="categoria" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="ResultadoOperacion">
+        <xsd:sequence>
+          <xsd:element name="exito" type="xsd:boolean"/>
+          <xsd:element name="mensaje" type="xsd:string"/>
+          <xsd:element name="codigoError" type="xsd:int" minOccurs="0"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:element name="solicitarGeneracionReporte">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="auth" type="tns:ContextoUsuario"/>
+            <xsd:element name="periodo" type="tns:PeriodoConsulta"/>
+            <xsd:element name="categoria" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="validarAcceso">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="auth" type="tns:ContextoUsuario"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="validarRangoFechas">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="wsKey" type="xsd:string"/>
+            <xsd:element name="periodo" type="tns:PeriodoConsulta"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="obtenerVolumenFacturacion">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="wsKey" type="xsd:string"/>
+            <xsd:element name="periodo" type="tns:PeriodoConsulta"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+      <xsd:element name="obtenerVolumenFacturacionResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="status" type="tns:ResultadoOperacion"/>
+            <xsd:element name="datos" type="tns:ResumenFacturacion"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="registrarReporte">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="wsKey" type="xsd:string"/>
+            <xsd:element name="contenido" type="tns:ResumenFacturacion"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+      <xsd:element name="registrarReporteResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="status" type="tns:ResultadoOperacion"/>
+            <xsd:element name="idReporte" type="xsd:int"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="generarDocumentoPDF">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="wsKey" type="xsd:string"/>
+            <xsd:element name="idReporte" type="xsd:int"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="enviarNotificacionReporte">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="auth" type="tns:ContextoUsuario"/>
+            <xsd:element name="urlDocumento" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="standardResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="resultado" type="tns:ResultadoOperacion"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="solicitarGeneracionRequest"><wsdl:part element="tns:solicitarGeneracionReporte" name="parameters"/></wsdl:message>
+  <wsdl:message name="validarAccesoRequest"><wsdl:part element="tns:validarAcceso" name="parameters"/></wsdl:message>
+  <wsdl:message name="validarRangoFechasRequest"><wsdl:part element="tns:validarRangoFechas" name="parameters"/></wsdl:message>
+  <wsdl:message name="obtenerVolumenRequest"><wsdl:part element="tns:obtenerVolumenFacturacion" name="parameters"/></wsdl:message>
+  <wsdl:message name="obtenerVolumenResponse"><wsdl:part element="tns:obtenerVolumenFacturacionResponse" name="parameters"/></wsdl:message>
+  <wsdl:message name="registrarReporteRequest"><wsdl:part element="tns:registrarReporte" name="parameters"/></wsdl:message>
+  <wsdl:message name="registrarReporteResponse"><wsdl:part element="tns:registrarReporteResponse" name="parameters"/></wsdl:message>
+  <wsdl:message name="generarPDFRequest"><wsdl:part element="tns:generarDocumentoPDF" name="parameters"/></wsdl:message>
+  <wsdl:message name="enviarNotificacionRequest"><wsdl:part element="tns:enviarNotificacionReporte" name="parameters"/></wsdl:message>
+  <wsdl:message name="standardResponse"><wsdl:part element="tns:standardResponse" name="parameters"/></wsdl:message>
+
+  <wsdl:portType name="GeneracionReportesPortType">
+    <wsdl:operation name="solicitarGeneracion">
+      <wsdl:input message="tns:solicitarGeneracionRequest"/>
+      <wsdl:output message="tns:standardResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="validarAcceso">
+      <wsdl:input message="tns:validarAccesoRequest"/>
+      <wsdl:output message="tns:standardResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="validarRangoFechas">
+      <wsdl:input message="tns:validarRangoFechasRequest"/>
+      <wsdl:output message="tns:standardResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="obtenerVolumenFacturacion">
+      <wsdl:input message="tns:obtenerVolumenRequest"/>
+      <wsdl:output message="tns:obtenerVolumenResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="registrarReporte">
+      <wsdl:input message="tns:registrarReporteRequest"/>
+      <wsdl:output message="tns:registrarReporteResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="generarDocumentoPDF">
+      <wsdl:input message="tns:generarPDFRequest"/>
+      <wsdl:output message="tns:standardResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="enviarNotificacionReporte">
+      <wsdl:input message="tns:enviarNotificacionRequest"/>
+      <wsdl:output message="tns:standardResponse"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="GeneracionReportesSOAPBinding" type="tns:GeneracionReportesPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="solicitarGeneracion">
+      <soap:operation soapAction="http://www.mtis.org/GeneracionReportes/solicitarGeneracion"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+    </wsdl:binding>
+
+  <wsdl:service name="GeneracionReportesService">
+    <wsdl:port binding="tns:GeneracionReportesSOAPBinding" name="GeneracionReportesPort">
+      <soap:address location="http://localhost:8080/GeneracionReportesSW/services/GeneracionReportes"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>
