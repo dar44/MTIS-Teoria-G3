@@ -155,6 +155,83 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
       x-swagger-router-controller: FlujoConsultaController
 
+  # ── Flujo de Anulación (Sergio Mínguez) ──────────────────────────────────
+  /flujo-anulacion/iniciar:
+    post:
+      tags:
+        - FlujoAnulacion
+      summary: Iniciar flujo de anulacion de factura
+      description: |
+        Inicia el proceso completo de anulacion de una factura emitida.
+        Valida la WSKey, verifica el solicitante, comprueba el estado de la factura,
+        envia la solicitud de anulacion a la Agencia Tributaria,
+        actualiza el estado a ANULADA y notifica al emisor el resultado.
+      operationId: iniciarFlujoAnulacion
+      parameters:
+        - $ref: "#/components/parameters/WSKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnulacionRequest"
+      responses:
+        "200":
+          description: Flujo de anulacion completado correctamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcesoAnulacionResponse"
+        "400":
+          description: Datos de entrada invalidos o NIF no coincide
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: WSKey no valida
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Factura no encontrada
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: La factura ya ha sido anulada previamente
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Error tecnico durante el flujo de anulacion
+          headers:
+            salida:
+              $ref: "#/components/headers/salidaHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-swagger-router-controller: FlujoAnulacionController
+
   /facturas:
     post:
       tags:
@@ -1915,3 +1992,60 @@ components:
         detalle:
           type: string
           example: El campo fechaEmision es obligatorio
+
+    AnulacionRequest:
+      type: object
+      description: Datos necesarios para solicitar la anulacion de una factura
+      required:
+        - idFactura
+        - nifSolicitante
+        - emailSolicitante
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          description: Identificador de la factura que se desea anular
+          example: 123
+        nifSolicitante:
+          type: string
+          description: NIF del solicitante de la anulacion
+          example: B12345678
+        emailSolicitante:
+          type: string
+          format: email
+          description: Email del solicitante de la anulacion
+          example: empresa@correo.com
+        motivo:
+          type: string
+          description: Motivo por el que se solicita la anulacion de la factura
+          example: Factura emitida por error a destinatario incorrecto
+      example:
+        idFactura: 123
+        nifSolicitante: B12345678
+        emailSolicitante: empresa@correo.com
+        motivo: Factura emitida por error a destinatario incorrecto
+
+    ProcesoAnulacionResponse:
+      type: object
+      description: Resultado del proceso de anulacion de factura
+      properties:
+        idFactura:
+          type: integer
+          format: int64
+          description: ID de la factura anulada
+          example: 123
+        numeroFactura:
+          type: string
+          description: Numero de la factura anulada
+          example: FAC-2025-001
+        estadoAnterior:
+          type: string
+          description: Estado de la factura antes de la anulacion
+          example: ENVIADA
+        estadoFinal:
+          type: string
+          description: Estado de la factura tras la anulacion
+          example: ANULADA
+        mensaje:
+          type: string
+          example: Proceso de anulacion completado correctamente
