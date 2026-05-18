@@ -6,7 +6,9 @@ const { validarWSKey } = require('../utils/Utils');
 const GestorArchivosService = require('./GestorArchivosService');
 const AuditoriaService = require('./AuditoriaService');
 const GestorRespuestasService = require('./GestorRespuestasService');
-const ComunicacionService = require('./ComunicacionService');
+const smtp = require('../ConexionFakeSMTP/ConexionFakeSMTP');
+
+const EMAIL_SISTEMA = 'facturacion@sistema-g3.com';
 
 /**
  * Iniciar flujo de consulta de factura
@@ -62,21 +64,14 @@ const iniciarFlujoConsulta = ({ consultaFacturaRequest, body, WSKey }) => new Pr
 
       // Respuesta conforme a ProcesoConsultaResponse
       // Intentar notificar al solicitante (no bloquear si falla)
-      (async () => {
-        try {
-          if (ruta) {
-            await ComunicacionService.enviarComunicacion({
-              body: {
-                destinatario: detalle && detalle.empresa_email ? detalle.empresa_email : undefined,
-                asunto: `Consulta factura ${idFactura}`,
-                cuerpo: `Su consulta de la factura ${idFactura} ha sido procesada. Archivo: ${ruta}`,
-                payload: { idFactura: Number(idFactura), ruta }
-              },
-              WSKey,
-            }).catch(() => {});
-          }
-        } catch (_) { /* ignore notify errors */ }
-      })();
+      if (ruta && detalle && detalle.empresa_email) {
+        smtp.sendEmail(
+          EMAIL_SISTEMA,
+          detalle.empresa_email,
+          `Consulta factura ${idFactura}`,
+          `Su consulta de la factura ${idFactura} ha sido procesada. Archivo: ${ruta}`,
+        ).catch(() => {}); // no bloquear si falla SMTP
+      }
 
       resolve(Service.successResponse({
         idFactura: Number(idFactura),
