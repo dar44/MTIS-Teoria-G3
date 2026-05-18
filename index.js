@@ -24,11 +24,18 @@ server.use('/cliente', express.static(path.join(__dirname, 'cliente')));
 
 // --- Proxy hacia MuleSoft (evita CORS) ---
 server.use('/proxy/mule', express.json(), (req, res) => {
-  // Detectar puerto MuleSoft segun el flujo:
-  //   anulacion → 9095 | cobro → 14102 | emision/consulta/otros → 9092
-  const puerto = req.url.includes('anulacion') ? 9095
-               : req.url.includes('cobro') ? 14102
-               : 9092;
+  // Enrutar al puerto MuleSoft correcto segun el tipo de flujo:
+  //   anulacion → 9095 | cobro → 14102 | subsanacion → 9094 | emision/consulta/otros → 9092
+  let puerto;
+  if (req.url.includes('anulacion')) {
+    puerto = 9095;
+  } else if (req.url.includes('cobro')) {
+    puerto = 14102;
+  } else if (req.url.includes('subsanacion')) {
+    puerto = 9094;
+  } else {
+    puerto = 9092;
+  }
   const muleUrl = `http://localhost:${puerto}/api${req.url}`;
   const headers = { 'Content-Type': 'application/json' };
   if (req.headers['wskey']) headers['WSKey'] = req.headers['wskey'];
@@ -54,6 +61,28 @@ server.use('/proxy/mule', express.json(), (req, res) => {
 // --- Configuración oas3-tools ---
 // Rutas directas para endpoints de pagos (fallback cuando OpenAPI no mapea correctamente)
 const FlujoCobroController = require('./controllers/FlujoCobroController');
+const FacturaController = require('./controllers/FacturaController');
+const ValidacionController = require('./controllers/ValidacionController');
+
+// Fallback: listar rectificativas previas de una factura (usado por flujo MuleSoft de subsanación)
+server.get('/facturas/:idFactura/rectificativas', async (req, res) => {
+  try {
+    await FacturaController.listarRectificativasPrevias(req, res);
+  } catch (e) {
+    console.error('Fallback route /facturas/:idFactura/rectificativas error:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+// Fallback: validar permisos del solicitante (usado por flujos MuleSoft)
+server.post('/validaciones/permisos', express.json(), async (req, res) => {
+  try {
+    await ValidacionController.validarPermisosSolicitante(req, res);
+  } catch (e) {
+    console.error('Fallback route /validaciones/permisos error:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
 
 server.get('/facturas/:idFactura/pagos', async (req, res) => {
   try {

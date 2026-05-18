@@ -32,6 +32,10 @@ const crearFacturaRectificativa = async (request, response) => {
   await Controller.handleRequest(request, response, service.crearFacturaRectificativa);
 };
 
+// Endpoint interno consumido por MuleSoft: lista rectificativas previas de una factura original
+const listarRectificativasPrevias = async (request, response) => {
+  await Controller.handleRequest(request, response, service.listarRectificativasPrevias);
+};
 
 module.exports = {
   actualizarEstadoFactura,
@@ -40,4 +44,5 @@ module.exports = {
   consultarEstadoFactura,
   crearFactura,
   crearFacturaRectificativa,
+  listarRectificativasPrevias,
 };

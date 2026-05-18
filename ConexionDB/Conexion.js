@@ -303,6 +303,38 @@ async function crearFacturaRectificativa(factura) {
     };
 }
 
+/**
+ * Obtiene una factura con los datos de su empresa mediante JOIN.
+ * Devuelve empresa_email y empresa_nombre como campos adicionales,
+ * necesarios para notificaciones en el flujo de subsanación.
+ */
+async function obtenerFacturaPorIdConEmpresa(idFactura) {
+    const sql = `
+        SELECT f.*,
+               e.email  AS empresa_email,
+               e.nombre AS empresa_nombre
+        FROM facturas f
+        INNER JOIN empresas e ON f.empresa_id = e.id
+        WHERE f.id = ?
+        LIMIT 1
+    `;
+    const results = await ejecutarQuery(sql, [idFactura]);
+    return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * Devuelve todas las facturas rectificativas asociadas a una factura original.
+ * Usado por el flujo MuleSoft de subsanación para el bucle de anulación.
+ */
+async function obtenerRectificativasPorFacturaOriginal(idFacturaOriginal) {
+    const sql = `
+        SELECT id, numero_factura, estado, empresa_id
+        FROM facturas
+        WHERE factura_original_id = ?
+    `;
+    return ejecutarQuery(sql, [idFacturaOriginal]);
+}
+
 module.exports = {
     connection,
     ejecutarQuery,
@@ -311,12 +343,14 @@ module.exports = {
     crearFactura,
     crearFacturaRectificativa,
     obtenerFacturaPorId,
+    obtenerFacturaPorIdConEmpresa,
     obtenerFacturaPorNumero,
     obtenerEstadoFacturaPorId,
+    obtenerRectificativasPorFacturaOriginal,
     actualizarEstadoFactura,
     registrarEventoAuditoria,
-    registrarErrorAuditoria
-    , crearDocumentoPago
-    , obtenerDocumentoPagoPorId
-    , listarPagosPorFactura
-};
+    registrarErrorAuditoria,
+    crearDocumentoPago,
+    obtenerDocumentoPagoPorId,
+    listarPagosPorFactura,
+};
