@@ -207,7 +207,6 @@
             <ee:set-variable variableName="httpStatus">401</ee:set-variable>
           </ee:variables>
         </ee:transform>
-        <raise-error type="ACCESS:UNAUTHORIZED" description="WSKey invalida"/>
       </when>
 
       <!-- WSKey valida: continuar con el flujo -->
