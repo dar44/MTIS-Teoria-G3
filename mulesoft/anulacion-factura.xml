@@ -32,7 +32,7 @@
 
   <!-- Conexion directa a MySQL (para validar WSKey) -->
   <db:config name="Anulacion_Database_Config" doc:name="Database Config Anulacion">
-    <db:my-sql-connection host="localhost" port="3306"
+    <db:my-sql-connection host="localhost" port="3307"
                           user="root" password="root"
                           database="facturacion">
       <db:connection-properties>
@@ -190,7 +190,7 @@
             VALUES (:tipo, :desc, NOW(), 'mulesoft-anulacion')]]></db:sql>
           <db:input-parameters><![CDATA[#[{
             'tipo': 'INTENTO_NO_AUTORIZADO',
-            'desc': 'WSKey invalida en flujo de anulacion. Email solicitante: ' ++ (vars.datos_entrada.email default 'desconocido')
+            'desc': 'WSKey invalida en flujo de anulacion. Email solicitante: ' ++ (vars.datos_entrada.emailSolicitante default 'desconocido')
           }]]]></db:input-parameters>
         </db:insert>
 
@@ -220,10 +220,10 @@
                       doc:name="Validar datos del solicitante">
           <http:body><![CDATA[#[%dw 2.0 output application/json ---
           {
-            nif: vars.datos_entrada.nif,
-            email: vars.datos_entrada.email
-          }]]></http:body>
-          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+            nif: vars.datos_entrada.nifSolicitante,
+            email: vars.datos_entrada.emailSolicitante
+          } ]]]></http:body>
+          <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" } ]]]></http:headers>
         </http:request>
         <set-variable variableName="resp_validacion_solicitante" value="#[payload]" doc:name="Set resp_validacion_solicitante"/>
 
@@ -254,7 +254,7 @@
             <http:request method="GET" config-ref="REST_API_Anulacion_Config"
                           path="#['/facturas/' ++ (vars.datos_entrada.idFactura as String)]"
                           doc:name="Consultar existencia de la factura">
-              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey }]]></http:headers>
+              <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey } ]]]></http:headers>
             </http:request>
             <set-variable variableName="factura_encontrada" value="#[payload]" doc:name="Set factura_encontrada"/>
 
@@ -267,11 +267,11 @@
                               doc:name="Notificar factura no encontrada">
                   <http:body><![CDATA[#[%dw 2.0 output application/json ---
                   {
-                    destinatario: vars.datos_entrada.email,
+                    destinatario: vars.datos_entrada.emailSolicitante,
                     asunto: "Solicitud de anulacion rechazada - Factura no encontrada",
-                    cuerpo: "Su solicitud de anulacion de la factura " ++ vars.datos_entrada.numeroFactura ++ " ha sido rechazada porque no existe en el sistema.\n\nSistema de Facturacion G3"
-                  }]]></http:body>
-                  <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                    cuerpo: "Su solicitud de anulacion de la factura con ID " ++ (vars.datos_entrada.idFactura as String) ++ " ha sido rechazada porque no existe en el sistema.\n\nSistema de Facturacion G3"
+                  } ]]]></http:body>
+                  <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" } ]]]></http:headers>
                 </http:request>
 
                 <ee:transform doc:name="Respuesta factura no encontrada">
@@ -306,11 +306,11 @@
                                   doc:name="Notificar factura ya anulada">
                       <http:body><![CDATA[#[%dw 2.0 output application/json ---
                       {
-                        destinatario: vars.datos_entrada.email,
+                        destinatario: vars.datos_entrada.emailSolicitante,
                         asunto: "Solicitud de anulacion rechazada - Factura ya anulada",
-                        cuerpo: "Su solicitud de anulacion de la factura " ++ vars.datos_entrada.numeroFactura ++ " no puede procesarse porque dicha factura ya se encuentra en estado ANULADA.\n\nSistema de Facturacion G3"
-                      }]]></http:body>
-                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                        cuerpo: "Su solicitud de anulacion de la factura " ++ vars.numero_factura_bd ++ " no puede procesarse porque dicha factura ya se encuentra en estado ANULADA.\n\nSistema de Facturacion G3"
+                      } ]]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" } ]]]></http:headers>
                     </http:request>
 
                     <ee:transform doc:name="Respuesta factura ya anulada">
@@ -319,7 +319,7 @@
                         {
                           codigo: "ERR-409",
                           mensaje: "Factura ya anulada",
-                          detalle: "La factura " ++ vars.datos_entrada.numeroFactura ++ " ya se encuentra en estado ANULADA"
+                          detalle: "La factura " ++ vars.numero_factura_bd ++ " ya se encuentra en estado ANULADA"
                         }]]></ee:set-payload>
                       </ee:message>
                       <ee:variables>
@@ -339,10 +339,10 @@
                       <http:body><![CDATA[#[%dw 2.0 output application/json ---
                       {
                         destinatario: "agencia@tributaria.es",
-                        asunto: "Solicitud de anulacion de factura " ++ vars.datos_entrada.numeroFactura ++ " - " ++ (vars.datos_entrada.nif default ""),
-                        cuerpo: "Se comunica la anulacion de la factura con los siguientes datos:\n\n- Numero de factura: " ++ vars.datos_entrada.numeroFactura ++ "\n- ID en sistema: " ++ (vars.datos_entrada.idFactura as String) ++ "\n- NIF del emisor: " ++ (vars.datos_entrada.nif default "") ++ "\n- Estado anterior: " ++ (vars.estado_actual default "DESCONOCIDO") ++ "\n- Motivo de anulacion: " ++ (vars.datos_entrada.motivoAnulacion default "No especificado") ++ "\n\nSistema de Facturacion Electronica G3"
-                      }]]></http:body>
-                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                        asunto: "Solicitud de anulacion de factura " ++ vars.numero_factura_bd ++ " - " ++ (vars.datos_entrada.nifSolicitante default ""),
+                        cuerpo: "Se comunica la anulacion de la factura con los siguientes datos:\n\n- Numero de factura: " ++ vars.numero_factura_bd ++ "\n- ID en sistema: " ++ (vars.datos_entrada.idFactura as String) ++ "\n- NIF del emisor: " ++ (vars.datos_entrada.nifSolicitante default "") ++ "\n- Estado anterior: " ++ (vars.estado_actual default "DESCONOCIDO") ++ "\n- Motivo de anulacion: " ++ (vars.datos_entrada.motivo default "No especificado") ++ "\n\nSistema de Facturacion Electronica G3"
+                      } ]]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" } ]]]></http:headers>
                     </http:request>
 
                     <!-- ─── PASO 7: Actualizar estado de la factura a ANULADA ─── -->
@@ -353,9 +353,9 @@
                       <http:body><![CDATA[#[%dw 2.0 output application/json ---
                       {
                         nuevoEstado: "ANULADA",
-                        motivo: vars.datos_entrada.motivoAnulacion default "Anulacion solicitada por el emisor"
-                      }]]></http:body>
-                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                        motivo: vars.datos_entrada.motivo default "Anulacion solicitada por el emisor"
+                      } ]]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" } ]]]></http:headers>
                     </http:request>
 
                     <!-- ─── PASO 8: Notificar al emisor el resultado ─── -->
@@ -365,11 +365,11 @@
                                   doc:name="Notificar al emisor">
                       <http:body><![CDATA[#[%dw 2.0 output application/json ---
                       {
-                        destinatario: vars.datos_entrada.email,
-                        asunto: "Anulacion de factura " ++ vars.datos_entrada.numeroFactura ++ " completada",
-                        cuerpo: "Su factura " ++ vars.datos_entrada.numeroFactura ++ " ha sido anulada correctamente.\n\nLa solicitud de anulacion ha sido comunicada a la Agencia Tributaria.\n\nEstado final: ANULADA\n\nSistema de Facturacion Electronica G3"
-                      }]]></http:body>
-                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]></http:headers>
+                        destinatario: vars.datos_entrada.emailSolicitante,
+                        asunto: "Anulacion de factura " ++ vars.numero_factura_bd ++ " completada",
+                        cuerpo: "Su factura " ++ vars.numero_factura_bd ++ " ha sido anulada correctamente.\n\nLa solicitud de anulacion ha sido comunicada a la Agencia Tributaria.\n\nEstado final: ANULADA\n\nSistema de Facturacion Electronica G3"
+                      } ]]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" } ]]]></http:headers>
                     </http:request>
 
                     <!-- Registrar evento de auditoria: anulacion exitosa -->
@@ -378,7 +378,7 @@
                         VALUES (:tipo, :desc, NOW(), 'mulesoft-anulacion')]]></db:sql>
                       <db:input-parameters><![CDATA[#[{
                         'tipo': 'ANULACION_EXITOSA',
-                        'desc': 'Factura ' ++ vars.datos_entrada.numeroFactura ++ ' anulada correctamente. ID: ' ++ (vars.datos_entrada.idFactura as String)
+                        'desc': 'Factura ' ++ vars.numero_factura_bd ++ ' anulada correctamente. ID: ' ++ (vars.datos_entrada.idFactura as String)
                       }]]]></db:input-parameters>
                     </db:insert>
 
@@ -388,7 +388,7 @@
                         <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
                         {
                           idFactura: vars.datos_entrada.idFactura,
-                          numeroFactura: vars.datos_entrada.numeroFactura,
+                          numeroFactura: vars.numero_factura_bd,
                           estadoFinal: "ANULADA",
                           mensaje: "Factura anulada correctamente. Notificacion enviada a la Agencia Tributaria y al emisor."
                         }]]></ee:set-payload>
@@ -411,31 +411,7 @@
          MANEJO GLOBAL DE ERRORES DEL FLUJO DE ANULACION
          ═══════════════════════════════════════════════════════════ -->
     <error-handler>
-      <on-error-propagate enableNotifications="true" logException="true" type="ANY" doc:name="On Error Propagate Anulacion">
-        <!-- Registrar error tecnico en auditoria -->
-        <db:insert doc:name="Registrar error en auditoria" config-ref="Anulacion_Database_Config">
-          <db:sql><![CDATA[INSERT INTO auditoria_errores (tipo_error, descripcion, fecha, origen)
-            VALUES (:tipo, :desc, NOW(), 'mulesoft-anulacion')]]></db:sql>
-          <db:input-parameters><![CDATA[#[{
-            'tipo': (error.errorType.identifier default 'ERROR_DESCONOCIDO'),
-            'desc': (error.description default 'Error no especificado')[0 to 254]
-          }]]]></db:input-parameters>
-        </db:insert>
-
-        <!-- Enviar email de error via FakeSMTP -->
-        <email:send config-ref="Email_SMTP_Anulacion"
-                    fromAddress="facturacion@sistema-g3.com"
-                    subject="Error durante el flujo de anulacion de factura"
-                    doc:name="Email error anulacion">
-          <email:to-addresses>
-            <email:to-address value="#[vars.datos_entrada.email default 'admin@sistema-g3.com']"/>
-          </email:to-addresses>
-          <email:body contentTransferEncoding="8BIT">
-            <email:content><![CDATA[Se ha producido un error durante el flujo de anulacion de factura. Descripcion: #[error.description default 'Error desconocido']]]></email:content>
-          </email:body>
-        </email:send>
-
-        <!-- Respuesta de error generica -->
+      <on-error-continue enableNotifications="true" logException="true" type="ANY" doc:name="On Error Anulacion">
         <ee:transform doc:name="Respuesta error general">
           <ee:message>
             <ee:set-payload><![CDATA[%dw 2.0 output application/json ---
@@ -449,7 +425,7 @@
             <ee:set-variable variableName="httpStatus">500</ee:set-variable>
           </ee:variables>
         </ee:transform>
-      </on-error-propagate>
+      </on-error-continue>
     </error-handler>
 
   </flow>

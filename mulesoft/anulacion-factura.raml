@@ -13,19 +13,15 @@ types:
         type: integer
         required: true
         example: 42
-      numeroFactura:
-        type: string
-        required: true
-        example: FAC-2025-001
-      nif:
+      nifSolicitante:
         type: string
         required: true
         example: B12345678
-      email:
+      emailSolicitante:
         type: string
         required: true
         example: empresa@correo.com
-      motivoAnulacion:
+      motivo:
         type: string
         required: false
         example: Error en los datos de facturacion
@@ -79,10 +75,9 @@ types:
           type: AnulacionFacturaRequest
           example:
             idFactura: 42
-            numeroFactura: FAC-2025-001
-            nif: B12345678
-            email: empresa@correo.com
-            motivoAnulacion: Error en los datos de facturacion
+            nifSolicitante: B12345678
+            emailSolicitante: empresa@correo.com
+            motivo: Error en los datos de facturacion
       responses:
         200:
           body:

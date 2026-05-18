@@ -41,12 +41,25 @@ server.use('/proxy/mule', express.json(), (req, res) => {
   if (req.headers['wskey']) headers['WSKey'] = req.headers['wskey'];
 
   const muleReq = http.request(muleUrl, { method: req.method, headers }, (muleRes) => {
-    let body = '';
-    muleRes.on('data', chunk => body += chunk);
+    const chunks = [];
+    muleRes.on('data', chunk => chunks.push(chunk));
     muleRes.on('end', () => {
+      const raw = Buffer.concat(chunks);
+      const contentType = muleRes.headers['content-type'] || '';
       res.status(muleRes.statusCode);
-      res.setHeader('Content-Type', 'application/json');
-      res.end(body);
+      if (contentType.includes('application/json') || raw[0] === 0x7b || raw[0] === 0x5b) {
+        // JSON: pass through as-is
+        res.setHeader('Content-Type', 'application/json');
+        res.end(raw.toString('utf8'));
+      } else {
+        // MuleSoft devolvio respuesta binaria/no-JSON (error interno de Mule)
+        res.setHeader('Content-Type', 'application/json');
+        res.status(500).json({
+          error: 'MuleSoft devolvio una respuesta no-JSON',
+          statusMule: muleRes.statusCode,
+          contentType: contentType
+        });
+      }
     });
   });
   muleReq.on('error', (err) => {
@@ -80,6 +93,16 @@ server.post('/validaciones/permisos', express.json(), async (req, res) => {
     await ValidacionController.validarPermisosSolicitante(req, res);
   } catch (e) {
     console.error('Fallback route /validaciones/permisos error:', e);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+// Fallback: validar datos del solicitante (nif + email) — usado por flujo anulacion MuleSoft
+server.post('/validaciones/datos-solicitante', express.json(), async (req, res) => {
+  try {
+    await ValidacionController.validarDatosSolicitante(req, res);
+  } catch (e) {
+    console.error('Fallback route /validaciones/datos-solicitante error:', e);
     res.status(500).json({ error: 'Error interno' });
   }
 });
