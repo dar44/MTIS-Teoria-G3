@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cliente Subsanación de Factura — G3</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface-hover: #22253a;
+      --border: #2a2d3e; --text: #e4e4e7; --text-muted: #9ca3af;
+      --primary: #6366f1; --primary-hover: #818cf8;
+      --success: #22c55e; --warning: #f59e0b; --error: #ef4444; --info: #3b82f6;
+      --radius: 12px; --font: 'Inter', -apple-system, sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; }
+    .app { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+    .header { text-align: center; margin-bottom: 32px; }
+    .logo { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 4px; }
+    .logo-icon { font-size: 32px; }
+    .header h1 { font-size: 24px; font-weight: 700; background: linear-gradient(135deg, #f59e0b, #ef4444); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: var(--text-muted); font-size: 14px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 16px; }
+    .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+    .config-card { border-color: var(--primary); border-style: dashed; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: var(--font); font-size: 14px; transition: border-color 0.2s;
+    }
+    .field textarea { min-height: 60px; resize: vertical; }
+    .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--primary); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+    .btn { padding: 12px 20px; border: none; border-radius: 8px; font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn-primary { background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.4); }
+    .btn-secondary { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--warning); }
+    .btn-outline { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-outline:hover { border-color: var(--error); color: var(--error); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .result-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .badge { padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+    .badge.success { background: rgba(34,197,94,0.15); color: var(--success); }
+    .badge.error { background: rgba(239,68,68,0.15); color: var(--error); }
+    .badge.warn { background: rgba(245,158,11,0.15); color: var(--warning); }
+    .response-time { font-size: 12px; color: var(--text-muted); }
+    .success-summary { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.25); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; font-size: 13px; display: none; }
+    .success-summary .row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .success-summary .row:last-child { border-bottom: none; }
+    .success-summary .lbl { color: var(--text-muted); }
+    .success-summary .val { font-weight: 600; color: var(--success); }
+    .code-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: 'Fira Code', 'Consolas', monospace; font-size: 13px; line-height: 1.5; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+    .curl { color: var(--text-muted); font-size: 12px; }
+    .timeline { display: flex; flex-direction: column; gap: 2px; }
+    .step { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 13px; background: var(--bg); border-left: 3px solid var(--border); transition: all 0.3s; }
+    .step.active { border-left-color: var(--info); background: rgba(59,130,246,0.08); }
+    .step.done { border-left-color: var(--success); }
+    .step.fail { border-left-color: var(--error); background: rgba(239,68,68,0.06); }
+    .step-icon { width: 20px; text-align: center; }
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; gap: 16px; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay p { color: var(--text-muted); font-size: 14px; }
+    .footer { text-align: center; padding: 24px 0 8px; color: var(--text-muted); font-size: 12px; }
+    .section-hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <p>Ejecutando flujo de subsanación…</p>
+</div>
+
+<div class="app">
+  <header class="header">
+    <div class="logo">
+      <span class="logo-icon">🔧</span>
+      <h1>Subsanación de Factura — G3</h1>
+    </div>
+    <p class="subtitle">Cliente operativo — Proxy Node.js :7777 → MuleSoft :9094</p>
+  </header>
+
+  <!-- Config -->
+  <section class="card config-card">
+    <h2>⚙️ Configuración</h2>
+    <div class="form-row">
+      <div class="field">
+        <label for="endpoint">Endpoint destino</label>
+        <select id="endpoint">
+          <option value="http://localhost:7777/proxy/mule/flujo-subsanacion/iniciar" selected>Proxy Node.js → MuleSoft (recomendado)</option>
+          <option value="http://localhost:9094/api/flujo-subsanacion/iniciar">MuleSoft directo (puerto 9094, sin CORS)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="wskey">WSKey *</label>
+        <input type="text" id="wskey" value="prueba" placeholder="Introduce la WSKey">
+      </div>
+    </div>
+  </section>
+
+  <!-- Factura original -->
+  <section class="card">
+    <h2>📄 Factura a subsanar</h2>
+    <div class="form-row">
+      <div class="field">
+        <label for="id-factura">ID Factura Original *</label>
+        <input type="number" id="id-factura" value="3" min="1" placeholder="3">
+      </div>
+      <div class="field">
+        <label for="motivo">Motivo de subsanación *</label>
+        <input type="text" id="motivo" value="Error en la base imponible" placeholder="Describe el error detectado">
+      </div>
+    </div>
+  </section>
+
+  <!-- Datos corregidos -->
+  <section class="card">
+    <h2>✏️ Datos corregidos (factura rectificativa)</h2>
+    <div class="form-row">
+      <div class="field">
+        <label for="rect-numero">Nº Factura Rectificativa *</label>
+        <input type="text" id="rect-numero" value="RECT-2026-001" placeholder="RECT-2026-001">
+      </div>
+      <div class="field">
+        <label for="rect-tipo">Tipo</label>
+        <select id="rect-tipo">
+          <option value="RECTIFICATIVA" selected>RECTIFICATIVA</option>
+          <option value="ORDINARIA">ORDINARIA</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row-3">
+      <div class="field">
+        <label for="rect-base">Base Imponible (€) *</label>
+        <input type="number" id="rect-base" value="1500.00" step="0.01" min="0">
+      </div>
+      <div class="field">
+        <label for="rect-iva">IVA (ej: 0.21) *</label>
+        <input type="number" id="rect-iva" value="0.21" step="0.01" min="0" max="1">
+      </div>
+      <div class="field">
+        <label for="rect-moneda">Moneda</label>
+        <select id="rect-moneda">
+          <option value="EUR" selected>EUR</option>
+          <option value="USD">USD</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row-3">
+      <div class="field">
+        <label for="rect-fecha">Fecha Emisión *</label>
+        <input type="datetime-local" id="rect-fecha">
+      </div>
+      <div class="field">
+        <label for="rect-desde">Fecha Desde Facturación</label>
+        <input type="date" id="rect-desde" value="2026-04-01">
+      </div>
+      <div class="field">
+        <label for="rect-hasta">Fecha Hasta Facturación</label>
+        <input type="date" id="rect-hasta" value="2026-05-01">
+      </div>
+    </div>
+  </section>
+
+  <!-- Acciones -->
+  <div class="actions">
+    <button class="btn btn-primary" id="btn-enviar" onclick="enviarSubsanacion()">🔧 Iniciar Flujo de Subsanación</button>
+    <button class="btn btn-secondary" onclick="testFacturaNoExiste()">🚫 Test: Factura no existe</button>
+    <button class="btn btn-secondary" onclick="testEstadoInvalido()">⛔ Test: Estado inválido</button>
+    <button class="btn btn-outline" onclick="testWSKeyInvalida()">🔑 Test: WSKey incorrecta</button>
+  </div>
+
+  <!-- Timeline -->
+  <section class="card section-hidden" id="timeline-section">
+    <h2>🔄 Pasos del flujo</h2>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <!-- Resultado -->
+  <section class="card section-hidden" id="resultado-section">
+    <h2>📬 Respuesta</h2>
+    <div class="result-header">
+      <span class="badge" id="status-badge">—</span>
+      <span class="response-time" id="response-time"></span>
+    </div>
+    <div class="success-summary" id="success-summary">
+      <div class="row"><span class="lbl">Factura original</span><span class="val" id="s-original">—</span></div>
+      <div class="row"><span class="lbl">Factura rectificativa</span><span class="val" id="s-rectificativa">—</span></div>
+      <div class="row"><span class="lbl">Número rectificativa</span><span class="val" id="s-numero">—</span></div>
+      <div class="row"><span class="lbl">Estado original</span><span class="val" id="s-estado-orig">—</span></div>
+      <div class="row"><span class="lbl">Estado rectificativa</span><span class="val" id="s-estado-rect">—</span></div>
+    </div>
+    <pre class="code-block" id="resultado"></pre>
+  </section>
+
+  <!-- cURL -->
+  <section class="card section-hidden" id="curl-section">
+    <h2>💻 Comando cURL equivalente</h2>
+    <pre class="code-block curl" id="curl-cmd"></pre>
+  </section>
+
+  <footer class="footer">Facturación Electrónica G3 · MuleSoft Subsanación · Puerto 9094</footer>
+</div>
+
+<script>
+  // ===== PASOS BPMN =====
+  const PASOS = [
+    'Validar presencia de WSKey',
+    'Registrar evento de auditoría (inicio)',
+    'Validar permisos del solicitante',
+    'Recuperar factura original',
+    'Verificar estado permite subsanación',
+    'Crear factura rectificativa',
+    'Obtener y anular rectificativas previas',
+    'Generar XML y PDF',
+    'Almacenar en directorio de red',
+    'Marcar factura original como SUBSANADA',
+    'Notificar a la empresa',
+  ];
+
+  // ===== INIT =====
+  document.addEventListener('DOMContentLoaded', () => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    document.getElementById('rect-fecha').value = local.toISOString().slice(0, 16);
+  });
+
+  // ===== RECOGER DATOS =====
+  function getBody() {
+    return {
+      idFacturaOriginal: parseInt(document.getElementById('id-factura').value),
+      motivoSubsanacion: document.getElementById('motivo').value,
+      datosCorregidos: {
+        numeroFactura:         document.getElementById('rect-numero').value,
+        baseImponible:         parseFloat(document.getElementById('rect-base').value),
+        iva:                   parseFloat(document.getElementById('rect-iva').value),
+        moneda:                document.getElementById('rect-moneda').value,
+        tipo:                  document.getElementById('rect-tipo').value,
+        fechaEmision:          new Date(document.getElementById('rect-fecha').value).toISOString(),
+        fechaDesdeFacturacion: document.getElementById('rect-desde').value || undefined,
+        fechaHastaFacturacion: document.getElementById('rect-hasta').value || undefined,
+      },
+    };
+  }
+
+  // ===== TIMELINE =====
+  function mostrarTimeline(pasoActual, estado) {
+    const container = document.getElementById('timeline');
+    container.innerHTML = '';
+    document.getElementById('timeline-section').style.display = 'block';
+    PASOS.forEach((paso, i) => {
+      const div = document.createElement('div');
+      div.classList.add('step');
+      let icon = '⬜';
+      if (i < pasoActual) { div.classList.add('done'); icon = '✅'; }
+      else if (i === pasoActual) {
+        if (estado === 'error') { div.classList.add('fail'); icon = '❌'; }
+        else if (estado === 'running') { div.classList.add('active'); icon = '⏳'; }
+        else { div.classList.add('done'); icon = '✅'; }
+      }
+      div.innerHTML = `<span class="step-icon">${icon}</span><span>${paso}</span>`;
+      container.appendChild(div);
+    });
+  }
+
+  // ===== DETECTAR PASO FALLIDO =====
+  function detectarPaso(status, body) {
+    if (status >= 200 && status < 300) return { paso: PASOS.length - 1, estado: 'done' };
+    const msg = JSON.stringify(body).toLowerCase();
+    if (status === 401 || msg.includes('wskey') || msg.includes('no proporcionada')) return { paso: 0, estado: 'error' };
+    if (status === 403 || msg.includes('permiso')) return { paso: 2, estado: 'error' };
+    if (status === 404 || msg.includes('no existe')) return { paso: 3, estado: 'error' };
+    if (msg.includes('no puede subsanarse') || msg.includes('estado actual')) return { paso: 4, estado: 'error' };
+    if (msg.includes('rectificativa')) return { paso: 5, estado: 'error' };
+    if (msg.includes('xml')) return { paso: 7, estado: 'error' };
+    if (msg.includes('pdf')) return { paso: 7, estado: 'error' };
+    if (msg.includes('subsanada')) return { paso: 9, estado: 'error' };
+    return { paso: 0, estado: 'error' };
+  }
+
+  // ===== MOSTRAR RESULTADO =====
+  function mostrarResultado(status, body, elapsed) {
+    document.getElementById('resultado-section').style.display = 'block';
+    const badge = document.getElementById('status-badge');
+    badge.textContent = `HTTP ${status}`;
+    badge.className = 'badge';
+    if (status >= 200 && status < 300) badge.classList.add('success');
+    else if (status >= 400 && status < 500) badge.classList.add('warn');
+    else badge.classList.add('error');
+    document.getElementById('response-time').textContent = `${elapsed}ms`;
+    document.getElementById('resultado').textContent = JSON.stringify(body, null, 2);
+
+    // Resumen de éxito
+    const summary = document.getElementById('success-summary');
+    if (status >= 200 && status < 300 && body.idFacturaRectificativa) {
+      document.getElementById('s-original').textContent = `#${body.idFacturaOriginal}`;
+      document.getElementById('s-rectificativa').textContent = `#${body.idFacturaRectificativa}`;
+      document.getElementById('s-numero').textContent = body.numeroFacturaRectificativa || '—';
+      document.getElementById('s-estado-orig').textContent = body.estadoFacturaOriginal || '—';
+      document.getElementById('s-estado-rect').textContent = body.estadoFacturaRectificativa || '—';
+      summary.style.display = 'block';
+    } else {
+      summary.style.display = 'none';
+    }
+
+    const info = detectarPaso(status, body);
+    mostrarTimeline(info.paso, info.estado);
+  }
+
+  // ===== CURL =====
+  function mostrarCurl(url, wskey, body) {
+    document.getElementById('curl-section').style.display = 'block';
+    document.getElementById('curl-cmd').textContent =
+      `curl.exe -X POST "${url}" \\\n  -H "Content-Type: application/json" \\\n  -H "WSKey: ${wskey}" \\\n  -d '${JSON.stringify(body)}'`;
+  }
+
+  // ===== PETICIÓN =====
+  async function hacerPeticion(url, wskey, body) {
+    document.getElementById('overlay').style.display = 'flex';
+    document.getElementById('btn-enviar').disabled = true;
+    mostrarTimeline(0, 'running');
+    const start = Date.now();
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'WSKey': wskey },
+        body: JSON.stringify(body),
+      });
+      const elapsed = Date.now() - start;
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { rawResponse: text }; }
+      mostrarResultado(res.status, data, elapsed);
+      mostrarCurl(url, wskey, body);
+    } catch (err) {
+      const elapsed = Date.now() - start;
+      mostrarResultado(0, { error: 'No se pudo conectar al servidor', detalle: err.message }, elapsed);
+      mostrarTimeline(0, 'error');
+    } finally {
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('btn-enviar').disabled = false;
+    }
+  }
+
+  // ===== ACCIONES =====
+  function enviarSubsanacion() {
+    const url = document.getElementById('endpoint').value;
+    const wskey = document.getElementById('wskey').value;
+    hacerPeticion(url, wskey, getBody());
+  }
+
+  function testWSKeyInvalida() {
+    const url = document.getElementById('endpoint').value;
+    hacerPeticion(url, 'clave_incorrecta_xyz', getBody());
+  }
+
+  function testFacturaNoExiste() {
+    const url = document.getElementById('endpoint').value;
+    const wskey = document.getElementById('wskey').value;
+    const body = getBody();
+    body.idFacturaOriginal = 99999;
+    hacerPeticion(url, wskey, body);
+  }
+
+  function testEstadoInvalido() {
+    const url = document.getElementById('endpoint').value;
+    const wskey = document.getElementById('wskey').value;
+    // La factura 1 ya está SUBSANADA tras las pruebas
+    const body = getBody();
+    body.idFacturaOriginal = 1;
+    hacerPeticion(url, wskey, body);
+  }
+</script>
+</body>
+</html>

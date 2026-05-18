@@ -1,0 +1,571 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       CONFIGURACIONES
+       ═══════════════════════════════════════════════════════════════ -->
+
+  <!-- Orquestador de subsanación: escucha en su propio puerto (9094) -->
+  <http:listener-config name="subsanacion-httpListenerConfig" doc:name="Listener HTTP Subsanacion Config">
+    <http:listener-connection host="0.0.0.0" port="9094"/>
+  </http:listener-config>
+
+  <!-- Backend Node.js REST API (puerto 7777) – validador estándar (falla en 4xx/5xx) -->
+  <http:request-config name="REST_API_Config" doc:name="REST API Node.js Config">
+    <http:request-connection host="localhost" port="7777"/>
+  </http:request-config>
+
+  <!-- Backend Node.js REST API – validador permisivo (acepta 404 para comprobar existencia) -->
+  <http:request-config name="REST_API_Accept404_Config" doc:name="REST API Config Acepta 404">
+    <http:request-connection host="localhost" port="7777"/>
+    <http:response-validator>
+      <!-- 404 queda fuera del rango de fallo para poder comprobarlo en un <choice> -->
+      <http:failure-status-code-validator values="400..403,405..599"/>
+    </http:response-validator>
+  </http:request-config>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FLOW PRINCIPAL – POST /api/flujo-subsanacion/iniciar
+       ═══════════════════════════════════════════════════════════════ -->
+
+  <flow name="subsanacion-iniciar-main" doc:name="Flujo Iniciar Subsanacion Factura">
+
+    <!-- ── Listener HTTP ── -->
+    <http:listener config-ref="subsanacion-httpListenerConfig"
+                   path="/api/flujo-subsanacion/iniciar"
+                   allowedMethods="POST"
+                   doc:name="Listener POST /flujo-subsanacion/iniciar">
+      <http:response statusCode="#[vars.httpStatus default 200]">
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:response>
+      <http:error-response statusCode="#[vars.httpStatus default 500]">
+        <http:body>#[payload]</http:body>
+        <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+      </http:error-response>
+    </http:listener>
+
+    <!-- ── Cabeceras CORS ── -->
+    <ee:transform doc:name="Inicializar Headers CORS">
+      <ee:variables>
+        <ee:set-variable variableName="outboundHeaders"><![CDATA[%dw 2.0
+output application/java
+---
+{
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, WSKey, Accept"
+}]]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+
+    <!-- ── Variables de entrada ── -->
+    <set-variable variableName="WSKey"
+                  value="#[attributes.headers.WSKey default attributes.headers.wskey default '']"
+                  doc:name="Guardar WSKey"/>
+    <set-variable variableName="datosEntrada"
+                  value="#[payload]"
+                  doc:name="Guardar Datos Entrada"/>
+
+    <!-- ═════════════════════════════════════════════════════════════
+         PASO 0 – Validar presencia de WSKey
+         ═════════════════════════════════════════════════════════════ -->
+    <choice doc:name="¿WSKey presente?">
+      <when expression="#[isEmpty(vars.WSKey)]" doc:name="WSKey Ausente">
+        <ee:transform doc:name="Error 401: WSKey Ausente">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ error: "WSKey no proporcionada en la cabecera HTTP" }]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">401</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+      </when>
+
+      <otherwise doc:name="WSKey Presente — continuar">
+
+        <!-- Audit: Inicio del flujo -->
+        <try doc:name="Auditar Inicio Subsanacion">
+          <http:request method="POST" config-ref="REST_API_Config"
+                        path="/auditoria/eventos"
+                        doc:name="Audit: SUBSANACION_INICIADA">
+            <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  tipoEvento:  "SUBSANACION_INICIADA",
+  descripcion: "Inicio del flujo de subsanación para factura id: " ++ (vars.datosEntrada.idFacturaOriginal as String default ""),
+  fecha:       now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+  origen:      "FlujoSubsanacion"
+}]]]></http:body>
+            <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+          </http:request>
+          <error-handler>
+            <on-error-continue type="ANY" doc:name="Ignorar error auditoria inicio"/>
+          </error-handler>
+        </try>
+
+        <!-- ═════════════════════════════════════════════════════════
+             PASO 1 – Validar permisos del solicitante
+             ═════════════════════════════════════════════════════════ -->
+        <http:request method="POST" config-ref="REST_API_Config"
+                      path="/validaciones/permisos"
+                      doc:name="Paso 1: Validar Permisos">
+          <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  usuarioId: vars.datosEntrada.usuarioId default "SISTEMA",
+  accion:    "SUBSANAR_FACTURA"
+}]]]></http:body>
+          <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+        </http:request>
+        <set-variable variableName="respuestaPermisos" value="#[payload]" doc:name="Guardar Respuesta Permisos"/>
+
+        <choice doc:name="¿Permisos concedidos?">
+          <when expression="#[(vars.respuestaPermisos.valido default vars.respuestaPermisos.permisos default false) == false]"
+                doc:name="Permisos Denegados">
+            <try doc:name="Auditar Permisos Denegados">
+              <http:request method="POST" config-ref="REST_API_Config"
+                            path="/auditoria/errores"
+                            doc:name="Audit: PERMISOS_DENEGADOS">
+                <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  tipoError:   "PERMISOS_DENEGADOS",
+  descripcion: "Permisos insuficientes para SUBSANAR_FACTURA. UsuarioId: " ++ (vars.datosEntrada.usuarioId default "SISTEMA"),
+  fecha:       now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+  origen:      "FlujoSubsanacion"
+}]]]></http:body>
+                <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+              </http:request>
+              <error-handler>
+                <on-error-continue type="ANY" doc:name="Ignorar error auditoria permisos"/>
+              </error-handler>
+            </try>
+            <ee:transform doc:name="Error 403: Permisos Insuficientes">
+              <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ error: "No tiene permisos para subsanar facturas" }]]></ee:set-payload>
+              </ee:message>
+              <ee:variables>
+                <ee:set-variable variableName="httpStatus">403</ee:set-variable>
+              </ee:variables>
+            </ee:transform>
+          </when>
+
+          <otherwise doc:name="Permisos OK — continuar">
+
+            <!-- ═════════════════════════════════════════════════════
+                 PASO 2 – Recuperar la factura original
+                 ═════════════════════════════════════════════════════ -->
+            <http:request method="GET"
+                          config-ref="REST_API_Accept404_Config"
+                          path="/facturas/{idFactura}"
+                          doc:name="Paso 2: GET Factura Original">
+              <http:headers><![CDATA[#[{ WSKey: vars.WSKey }]]]></http:headers>
+              <http:uri-params><![CDATA[#[output application/java
+---
+{ idFactura: vars.datosEntrada.idFacturaOriginal }]]]></http:uri-params>
+            </http:request>
+            <set-variable variableName="statusGetFactura"  value="#[attributes.statusCode]" doc:name="Guardar Status GET Factura"/>
+            <set-variable variableName="facturaOriginal"   value="#[payload]"               doc:name="Guardar Factura Original"/>
+
+            <choice doc:name="¿Factura original encontrada?">
+              <when expression="#[vars.statusGetFactura == 404]" doc:name="Factura No Encontrada">
+
+                <!-- Notificación por email -->
+                <try doc:name="Notificar Factura No Encontrada">
+                  <http:request method="POST" config-ref="REST_API_Config"
+                                path="/comunicaciones/notificar"
+                                doc:name="Email: Factura No Encontrada">
+                    <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  idFacturaRectificativa: 0,
+  emailEmpresa:           vars.datosEntrada.emailNotificacion default "soporte@sistema-g3.com",
+  tipoNotificacion:       "SUBSANACION_COMPLETADA",
+  asunto:                 "Error en subsanación: factura no encontrada",
+  mensaje:                "No se ha podido iniciar la subsanación de la factura con id " ++
+                          (vars.datosEntrada.idFacturaOriginal as String default "") ++
+                          " porque no existe en el sistema."
+}]]]></http:body>
+                    <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                  </http:request>
+                  <error-handler>
+                    <on-error-continue type="ANY" doc:name="Ignorar error email factura 404"/>
+                  </error-handler>
+                </try>
+
+                <!-- Audit: factura no encontrada -->
+                <try doc:name="Auditar Factura No Encontrada">
+                  <http:request method="POST" config-ref="REST_API_Config"
+                                path="/auditoria/errores"
+                                doc:name="Audit: FACTURA_NO_ENCONTRADA">
+                    <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  tipoError:   "FACTURA_NO_ENCONTRADA",
+  descripcion: "Factura con id " ++ (vars.datosEntrada.idFacturaOriginal as String default "") ++ " no encontrada",
+  fecha:       now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+  origen:      "FlujoSubsanacion"
+}]]]></http:body>
+                    <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                  </http:request>
+                  <error-handler>
+                    <on-error-continue type="ANY" doc:name="Ignorar error auditoria 404"/>
+                  </error-handler>
+                </try>
+
+                <ee:transform doc:name="Error 404: Factura No Encontrada">
+                  <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: "La factura original con id " ++
+         (vars.datosEntrada.idFacturaOriginal as String default "") ++
+         " no existe en el sistema"
+}]]></ee:set-payload>
+                  </ee:message>
+                  <ee:variables>
+                    <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                  </ee:variables>
+                </ee:transform>
+
+              </when>
+
+              <otherwise doc:name="Factura Encontrada — verificar condiciones">
+
+                <!-- ═════════════════════════════════════════════════
+                     PASO 3 – Verificar que el estado permite subsanación
+                     (la factura NO debe estar ANULADA, SUBSANADA ni RECTIFICADA)
+                     ═════════════════════════════════════════════════ -->
+                <choice doc:name="¿Estado permite subsanación?">
+                  <when expression="#[vars.facturaOriginal.estado == 'ANULADA' or
+                                      vars.facturaOriginal.estado == 'SUBSANADA' or
+                                      vars.facturaOriginal.estado == 'RECTIFICADA']"
+                        doc:name="Estado No Subsanable">
+
+                    <!-- Notificar a la empresa -->
+                    <try doc:name="Notificar Estado No Subsanable">
+                      <http:request method="POST" config-ref="REST_API_Config"
+                                    path="/comunicaciones/notificar"
+                                    doc:name="Email: Estado Incompatible">
+                        <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  idFacturaRectificativa: 0,
+  emailEmpresa:           vars.facturaOriginal.empresaEmail default "soporte@sistema-g3.com",
+  tipoNotificacion:       "SUBSANACION_COMPLETADA",
+  asunto:                 "Subsanación rechazada: estado incompatible",
+  mensaje:                "La factura " ++ vars.facturaOriginal.numeroFactura ++
+                          " no puede subsanarse porque su estado actual es '" ++
+                          vars.facturaOriginal.estado ++ "'."
+}]]]></http:body>
+                        <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                      </http:request>
+                      <error-handler>
+                        <on-error-continue type="ANY" doc:name="Ignorar error email estado incompatible"/>
+                      </error-handler>
+                    </try>
+
+                    <ee:transform doc:name="Error 400: Factura No Subsanable">
+                      <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: "La factura '" ++ vars.facturaOriginal.numeroFactura ++
+         "' no puede subsanarse. Estado actual: " ++ vars.facturaOriginal.estado
+}]]></ee:set-payload>
+                      </ee:message>
+                      <ee:variables>
+                        <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                      </ee:variables>
+                    </ee:transform>
+
+                  </when>
+
+                  <otherwise doc:name="Estado OK — proceder">
+
+                    <!-- ═════════════════════════════════════════════
+                         PASO 4 – Crear la factura rectificativa
+                         ═════════════════════════════════════════════ -->
+                    <http:request method="PUT" config-ref="REST_API_Config"
+                                  path="/facturas-rectificativas"
+                                  doc:name="Paso 4: Crear Factura Rectificativa">
+                      <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  idFacturaOriginal:     vars.datosEntrada.idFacturaOriginal,
+  empresaId:             vars.facturaOriginal.empresaId,
+  numeroFactura:         vars.datosEntrada.datosCorregidos.numeroFactura,
+  baseImponible:         vars.datosEntrada.datosCorregidos.baseImponible,
+  iva:                   vars.datosEntrada.datosCorregidos.iva,
+  moneda:                vars.datosEntrada.datosCorregidos.moneda default "EUR",
+  motivoRectificacion:   vars.datosEntrada.motivoSubsanacion,
+  fechaEmision:          now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+  fechaDesdeFacturacion: vars.datosEntrada.datosCorregidos.fechaDesdeFacturacion default null,
+  fechaHastaFacturacion: vars.datosEntrada.datosCorregidos.fechaHastaFacturacion default null
+}]]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                    </http:request>
+                    <set-variable variableName="facturaRectificativa" value="#[payload]" doc:name="Guardar Factura Rectificativa"/>
+
+                    <!-- ═════════════════════════════════════════════
+                         PASO 5 – Obtener rectificativas previas y anularlas (For Each)
+                         ═════════════════════════════════════════════ -->
+                    <http:request method="GET" config-ref="REST_API_Config"
+                                  path="/facturas/{idFactura}/rectificativas"
+                                  doc:name="Paso 5: GET Rectificativas Previas">
+                      <http:headers><![CDATA[#[{ WSKey: vars.WSKey }]]]></http:headers>
+                      <http:uri-params><![CDATA[#[output application/java
+---
+{ idFactura: vars.datosEntrada.idFacturaOriginal }]]]></http:uri-params>
+                    </http:request>
+                    <set-variable variableName="rectificativasPrevias" value="#[payload]" doc:name="Guardar Rectificativas Previas"/>
+
+                    <!-- Iterar sobre cada rectificativa previa y marcarla como ANULADA -->
+                    <foreach doc:name="Paso 5b: Anular Rectificativas Previas"
+                             collection="#[vars.rectificativasPrevias default []]">
+                      <set-variable variableName="idRectifPrevia"
+                                    value="#[payload.idFactura]"
+                                    doc:name="Guardar ID Rectificativa Previa"/>
+                      <try doc:name="Anular Rectificativa Previa">
+                        <http:request method="POST" config-ref="REST_API_Config"
+                                      path="/facturas/{idRectif}/actualizar-estado"
+                                      doc:name="POST: Anular Rectificativa Previa">
+                          <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  nuevoEstado: "ANULADA",
+  motivo:      "Anulada automáticamente al generar nueva factura rectificativa durante subsanación"
+}]]]></http:body>
+                          <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                          <http:uri-params><![CDATA[#[output application/java
+---
+{ idRectif: vars.idRectifPrevia }]]]></http:uri-params>
+                        </http:request>
+                        <error-handler>
+                          <!-- Si falla la anulación de una rectificativa previa, se continúa con las demás -->
+                          <on-error-continue type="ANY" doc:name="Continuar si falla anulación previa"/>
+                        </error-handler>
+                      </try>
+                    </foreach>
+
+                    <!-- ═════════════════════════════════════════════
+                         PASO 6 – Generar documentos XML y PDF
+                         ═════════════════════════════════════════════ -->
+                    <try doc:name="Paso 6a: Generar XML">
+                      <http:request method="POST" config-ref="REST_API_Config"
+                                    path="/gestor-archivos/generar-xml/{idFactura}"
+                                    doc:name="POST: Generar XML Rectificativa">
+                        <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                        <http:uri-params><![CDATA[#[output application/java
+---
+{ idFactura: vars.facturaRectificativa.idFacturaRectificativa }]]]></http:uri-params>
+                      </http:request>
+                      <error-handler>
+                        <on-error-continue type="ANY" doc:name="Ignorar error generación XML"/>
+                      </error-handler>
+                    </try>
+
+                    <try doc:name="Paso 6b: Generar PDF">
+                      <http:request method="POST" config-ref="REST_API_Config"
+                                    path="/gestor-archivos/generar-pdf/{idFactura}"
+                                    doc:name="POST: Generar PDF Rectificativa">
+                        <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                        <http:uri-params><![CDATA[#[output application/java
+---
+{ idFactura: vars.facturaRectificativa.idFacturaRectificativa }]]]></http:uri-params>
+                      </http:request>
+                      <error-handler>
+                        <on-error-continue type="ANY" doc:name="Ignorar error generación PDF"/>
+                      </error-handler>
+                    </try>
+
+                    <!-- ═════════════════════════════════════════════
+                         PASO 7 – Almacenar documentos en directorio de red
+                         ═════════════════════════════════════════════ -->
+                    <try doc:name="Paso 7: Almacenar en Red">
+                      <http:request method="POST" config-ref="REST_API_Config"
+                                    path="/gestor-archivos/almacenar-red/{idFactura}"
+                                    doc:name="POST: Almacenar Documentos en Red">
+                        <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                        <http:uri-params><![CDATA[#[output application/java
+---
+{ idFactura: vars.facturaRectificativa.idFacturaRectificativa }]]]></http:uri-params>
+                      </http:request>
+                      <error-handler>
+                        <on-error-continue type="ANY" doc:name="Ignorar error almacenamiento red"/>
+                      </error-handler>
+                    </try>
+
+                    <!-- ═════════════════════════════════════════════
+                         PASO 8 – Marcar la factura original como SUBSANADA
+                         ═════════════════════════════════════════════ -->
+                    <http:request method="POST" config-ref="REST_API_Config"
+                                  path="/facturas/{idFactura}/actualizar-estado"
+                                  doc:name="Paso 8: Marcar Original como SUBSANADA">
+                      <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  nuevoEstado: "SUBSANADA",
+  motivo:      vars.datosEntrada.motivoSubsanacion default
+               ("Subsanada mediante factura rectificativa " ++ vars.facturaRectificativa.numeroFactura)
+}]]]></http:body>
+                      <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                      <http:uri-params><![CDATA[#[output application/java
+---
+{ idFactura: vars.datosEntrada.idFacturaOriginal }]]]></http:uri-params>
+                    </http:request>
+
+                    <!-- ═════════════════════════════════════════════
+                         PASO 9 – Notificar a la empresa el resultado exitoso
+                         ═════════════════════════════════════════════ -->
+                    <try doc:name="Paso 9: Email Subsanación Exitosa">
+                      <http:request method="POST" config-ref="REST_API_Config"
+                                    path="/comunicaciones/notificar"
+                                    doc:name="Email: Subsanación Completada">
+                        <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  idFacturaRectificativa: vars.facturaRectificativa.idFacturaRectificativa,
+  emailEmpresa:           vars.facturaOriginal.empresaEmail default "empresa@correo.com",
+  tipoNotificacion:       "AMBAS",
+  asunto:                 "Factura subsanada correctamente",
+  mensaje:                "Su factura " ++ vars.facturaOriginal.numeroFactura ++
+                          " ha sido subsanada correctamente. " ++
+                          "Se ha generado la factura rectificativa " ++
+                          vars.facturaRectificativa.numeroFactura ++
+                          ". Los documentos XML y PDF están disponibles en el repositorio de red."
+}]]]></http:body>
+                        <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                      </http:request>
+                      <error-handler>
+                        <on-error-continue type="ANY" doc:name="Ignorar error email éxito"/>
+                      </error-handler>
+                    </try>
+
+                    <!-- Audit: flujo completado -->
+                    <try doc:name="Auditar Subsanacion Completada">
+                      <http:request method="POST" config-ref="REST_API_Config"
+                                    path="/auditoria/eventos"
+                                    doc:name="Audit: SUBSANACION_COMPLETADA">
+                        <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  tipoEvento:  "SUBSANACION_COMPLETADA",
+  descripcion: "Factura " ++ vars.facturaOriginal.numeroFactura ++
+               " subsanada. Rectificativa generada: " ++
+               vars.facturaRectificativa.numeroFactura,
+  fecha:       now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+  origen:      "FlujoSubsanacion"
+}]]]></http:body>
+                        <http:headers><![CDATA[#[{ WSKey: vars.WSKey, "Content-Type": "application/json" }]]]></http:headers>
+                      </http:request>
+                      <error-handler>
+                        <on-error-continue type="ANY" doc:name="Ignorar error auditoria fin"/>
+                      </error-handler>
+                    </try>
+
+                    <!-- ═════════════════════════════════════════════
+                         RESPUESTA FINAL
+                         ═════════════════════════════════════════════ -->
+                    <ee:transform doc:name="Respuesta 200: Subsanación Exitosa">
+                      <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  idFacturaOriginal:          vars.datosEntrada.idFacturaOriginal,
+  idFacturaRectificativa:     vars.facturaRectificativa.idFacturaRectificativa,
+  numeroFacturaRectificativa: vars.facturaRectificativa.numeroFactura,
+  estadoFacturaOriginal:      "SUBSANADA",
+  estadoFacturaRectificativa: "VALIDA",
+  mensaje:                    "Proceso de subsanación completado correctamente"
+}]]></ee:set-payload>
+                      </ee:message>
+                      <ee:variables>
+                        <ee:set-variable variableName="httpStatus">200</ee:set-variable>
+                      </ee:variables>
+                    </ee:transform>
+
+                  </otherwise>
+                </choice>
+              </otherwise>
+            </choice>
+          </otherwise>
+        </choice>
+      </otherwise>
+    </choice>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MANEJADOR DE ERRORES GLOBAL – fallos técnicos inesperados
+         ═══════════════════════════════════════════════════════════════ -->
+    <error-handler>
+      <on-error-propagate type="ANY" doc:name="Error Técnico Global">
+
+        <try doc:name="Auditar Error Técnico">
+          <http:request method="POST" config-ref="REST_API_Config"
+                        path="/auditoria/errores"
+                        doc:name="Audit: ERROR_TECNICO_SUBSANACION">
+            <http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+  tipoError:   "ERROR_TECNICO_SUBSANACION",
+  descripcion: error.description default "Error técnico inesperado durante la subsanación",
+  idFactura:   vars.datosEntrada.idFacturaOriginal default null,
+  fecha:       now() as String { format: "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'" },
+  origen:      "FlujoSubsanacion"
+}]]]></http:body>
+            <http:headers><![CDATA[#[{ WSKey: vars.WSKey default "", "Content-Type": "application/json" }]]]></http:headers>
+          </http:request>
+          <error-handler>
+            <on-error-continue type="ANY" doc:name="Ignorar error auditoria en error handler"/>
+          </error-handler>
+        </try>
+
+        <ee:transform doc:name="Error 500: Error Técnico">
+          <ee:message>
+            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+  error: error.description default "Error técnico inesperado durante el proceso de subsanación"
+}]]></ee:set-payload>
+          </ee:message>
+          <ee:variables>
+            <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+          </ee:variables>
+        </ee:transform>
+
+      </on-error-propagate>
+    </error-handler>
+
+  </flow>
+
+</mule>

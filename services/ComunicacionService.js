@@ -49,9 +49,9 @@ const notificarSubsanacion = ({ body, WSKey }) => new Promise(
 
       await smtp.sendEmail(
         EMAIL_SISTEMA,
-        body.destinatario,
+        body.emailEmpresa,
         body.asunto,
-        body.cuerpo,
+        body.mensaje,
       );
 
       resolve(Service.successResponse({

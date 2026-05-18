@@ -4,74 +4,44 @@ const db = require('../ConexionDB/Conexion');
 const { validarWSKey } = require('../utils/Utils');
 
 /**
- * Convierte fecha ISO 8601 a formato MySQL DATETIME
+ * Actualizar estado de factura
+ * Actualiza el estado (y motivo opcional) de una factura existente.
  */
-function toMySQLDatetime(isoString) {
-  if (!isoString) return null;
-  const d = new Date(isoString);
-  return d.toISOString().slice(0, 19).replace('T', ' ');
-}
-
-/**
- * Crear factura
- * Crea y persiste una factura en base de datos.
- *
- * facturaCreateRequest FacturaCreateRequest
- * returns FacturaResponse
- */
-const crearFactura = ({ body, WSKey }) => new Promise(
+const actualizarEstadoFactura = ({ idFactura, body, WSKey }) => new Promise(
   async (resolve, reject) => {
     try {
       await validarWSKey(WSKey);
 
-      const result = await db.crearFactura({
-        empresaId: body.empresaId,
-        numeroFactura: body.numeroFactura,
-        baseImponible: body.baseImponible,
-        iva: body.iva,
-        moneda: body.moneda,
-        tipo: body.tipo,
-        estado: body.estado,
-        fechaEmision: toMySQLDatetime(body.fechaEmision),
-        fechaDesdeFacturacion: body.fechaDesdeFacturacion || null,
-        fechaHastaFacturacion: body.fechaHastaFacturacion || null,
-      });
+      const { nuevoEstado, motivo } = body || {};
+      if (!nuevoEstado) {
+        return reject(Service.rejectResponse('nuevoEstado es obligatorio', 400));
+      }
 
-      resolve(Service.successResponse({
-        idFactura: result.idFactura,
-        empresaId: body.empresaId,
-        numeroFactura: body.numeroFactura,
-        baseImponible: body.baseImponible,
-        iva: body.iva,
-        moneda: body.moneda,
-        tipo: body.tipo,
-        estado: body.estado,
-        fechaEmision: body.fechaEmision,
-        fechaDesdeFacturacion: body.fechaDesdeFacturacion,
-        fechaHastaFacturacion: body.fechaHastaFacturacion,
-      }, 201));
+      const factura = await db.obtenerFacturaPorId(Number(idFactura));
+      if (!factura) {
+        return reject(Service.rejectResponse('Factura no encontrada', 404));
+      }
+
+      await db.actualizarEstadoFactura(Number(idFactura), nuevoEstado, motivo || null);
+      resolve(Service.successResponse({ mensaje: 'Estado de factura actualizado correctamente' }));
     } catch (e) {
-      reject(Service.rejectResponse(
-        e.salida || e.message || 'Error al crear factura',
-        e.status || 500,
-      ));
+      reject(Service.rejectResponse(e.salida || e.message || 'Error al actualizar estado de factura', e.status || 500));
     }
   },
 );
 
 /**
  * Consultar estado de factura
+ * Devuelve el estado actual de una factura.
  */
 const consultarEstadoFactura = ({ idFactura, WSKey }) => new Promise(
   async (resolve, reject) => {
     try {
       await validarWSKey(WSKey);
 
-      const factura = await db.obtenerEstadoFacturaPorId(idFactura);
+      const factura = await db.obtenerEstadoFacturaPorId(Number(idFactura));
       if (!factura) {
-        return reject(Service.rejectResponse(
-          `Factura con id ${idFactura} no encontrada`, 404,
-        ));
+        return reject(Service.rejectResponse('Factura no encontrada', 404));
       }
 
       resolve(Service.successResponse({
@@ -80,135 +50,200 @@ const consultarEstadoFactura = ({ idFactura, WSKey }) => new Promise(
         estado: factura.estado,
       }));
     } catch (e) {
-      reject(Service.rejectResponse(
-        e.salida || e.message || 'Error al consultar estado',
-        e.status || 500,
-      ));
+      reject(Service.rejectResponse(e.salida || e.message || 'Error al consultar estado', e.status || 500));
     }
   },
 );
 
 /**
  * Consultar existencia de factura
+ * Verifica si una factura existe en el sistema.
  */
 const consultarExistenciaFactura = ({ idFactura, WSKey }) => new Promise(
   async (resolve, reject) => {
     try {
       await validarWSKey(WSKey);
 
-      const factura = await db.obtenerFacturaPorId(idFactura);
-
+      const factura = await db.obtenerFacturaPorId(Number(idFactura));
       resolve(Service.successResponse({
-        idFactura: parseInt(idFactura),
+        idFactura: Number(idFactura),
         existe: !!factura,
+        mensaje: factura ? 'Factura encontrada en el sistema' : 'Factura no encontrada',
       }));
     } catch (e) {
-      reject(Service.rejectResponse(
-        e.salida || e.message || 'Error al consultar existencia',
-        e.status || 500,
-      ));
+      reject(Service.rejectResponse(e.salida || e.message || 'Error al verificar existencia', e.status || 500));
     }
   },
 );
 
 /**
  * Recuperar datos detallados de factura
+ * Recupera los datos completos de una factura por su identificador.
+ * Incluye empresaEmail y empresaNombre (campos extra para uso de MuleSoft).
  */
 const consultarFacturaDetalle = ({ idFactura, WSKey }) => new Promise(
   async (resolve, reject) => {
     try {
       await validarWSKey(WSKey);
 
-      const f = await db.obtenerFacturaPorId(idFactura);
-      if (!f) {
-        return reject(Service.rejectResponse(
-          `Factura con id ${idFactura} no encontrada`, 404,
-        ));
+      const factura = await db.obtenerFacturaPorIdConEmpresa(Number(idFactura));
+      if (!factura) {
+        return reject(Service.rejectResponse('Factura no encontrada', 404));
       }
 
       resolve(Service.successResponse({
-        idFactura: f.id,
-        empresaId: f.empresa_id,
-        numeroFactura: f.numero_factura,
-        baseImponible: f.base_imponible,
-        iva: f.iva,
-        moneda: f.moneda,
-        tipo: f.tipo,
-        estado: f.estado,
-        fechaEmision: f.fecha_emision,
-        fechaDesdeFacturacion: f.fecha_desde_facturacion,
-        fechaHastaFacturacion: f.fecha_hasta_facturacion,
+        idFactura:             factura.id,
+        empresaId:             factura.empresa_id,
+        empresaEmail:          factura.empresa_email,
+        empresaNombre:         factura.empresa_nombre,
+        numeroFactura:         factura.numero_factura,
+        baseImponible:         factura.base_imponible,
+        iva:                   factura.iva,
+        moneda:                factura.moneda,
+        tipo:                  factura.tipo,
+        estado:                factura.estado,
+        motivoEstado:          factura.motivo_estado || null,
+        fechaEmision:          factura.fecha_emision,
+        fechaDesdeFacturacion: factura.fecha_desde_facturacion || null,
+        fechaHastaFacturacion: factura.fecha_hasta_facturacion || null,
+        idFacturaOriginal:     factura.factura_original_id || null,
       }));
     } catch (e) {
-      reject(Service.rejectResponse(
-        e.salida || e.message || 'Error al consultar factura',
-        e.status || 500,
-      ));
+      reject(Service.rejectResponse(e.salida || e.message || 'Error al consultar factura', e.status || 500));
     }
   },
 );
 
+const toMysqlDatetime = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toISOString().slice(0, 19).replace('T', ' ');
+};
+
 /**
- * Actualizar estado de factura
+ * Crear factura
+ * Crea y persiste una factura ordinaria en base de datos.
  */
-const actualizarEstadoFactura = ({ idFactura, body, WSKey }) => new Promise(
+const crearFactura = ({ body, WSKey }) => new Promise(
   async (resolve, reject) => {
     try {
       await validarWSKey(WSKey);
 
-      const factura = await db.obtenerFacturaPorId(idFactura);
-      if (!factura) {
+      const factura = body;
+      if (!factura.empresaId || !factura.numeroFactura || factura.baseImponible == null) {
         return reject(Service.rejectResponse(
-          `Factura con id ${idFactura} no encontrada`, 404,
+          'Campos obligatorios faltantes: empresaId, numeroFactura, baseImponible', 400,
         ));
       }
 
-      await db.actualizarEstadoFactura(
-        idFactura, body.nuevoEstado, body.motivo || null,
-      );
+      const resultado = await db.crearFactura({
+        empresaId:             factura.empresaId,
+        numeroFactura:         factura.numeroFactura,
+        baseImponible:         factura.baseImponible,
+        iva:                   factura.iva ?? 0,
+        moneda:                factura.moneda || 'EUR',
+        tipo:                  factura.tipo || 'ORDINARIA',
+        estado:                factura.estado || 'VALIDA',
+        fechaEmision:          toMysqlDatetime(factura.fechaEmision || new Date().toISOString()),
+        fechaDesdeFacturacion: factura.fechaDesdeFacturacion || null,
+        fechaHastaFacturacion: factura.fechaHastaFacturacion || null,
+      });
 
       resolve(Service.successResponse({
-        mensaje: `Estado de la factura ${idFactura} actualizado a ${body.nuevoEstado}`,
-      }));
+        idFactura:             resultado.idFactura,
+        empresaId:             factura.empresaId,
+        numeroFactura:         factura.numeroFactura,
+        baseImponible:         factura.baseImponible,
+        iva:                   factura.iva ?? 0,
+        moneda:                factura.moneda || 'EUR',
+        tipo:                  factura.tipo || 'ORDINARIA',
+        estado:                factura.estado || 'VALIDA',
+        fechaEmision:          factura.fechaEmision,
+        fechaDesdeFacturacion: factura.fechaDesdeFacturacion || null,
+        fechaHastaFacturacion: factura.fechaHastaFacturacion || null,
+      }, 201));
     } catch (e) {
-      reject(Service.rejectResponse(
-        e.salida || e.message || 'Error al actualizar estado',
-        e.status || 500,
-      ));
+      reject(Service.rejectResponse(e.salida || e.message || 'Error al crear factura', e.status || 500));
     }
   },
 );
 
 /**
  * Crear factura rectificativa
+ * Crea y persiste una factura rectificativa vinculada a la original que se subsana.
  */
 const crearFacturaRectificativa = ({ body, WSKey }) => new Promise(
   async (resolve, reject) => {
     try {
       await validarWSKey(WSKey);
 
-      const result = await db.crearFacturaRectificativa({
-        empresaId: body.empresaId,
-        numeroFactura: body.numeroFactura,
-        baseImponible: body.baseImponible,
-        iva: body.iva,
-        moneda: body.moneda,
-        fechaEmision: toMySQLDatetime(body.fechaEmision),
-        fechaDesdeFacturacion: body.fechaDesdeFacturacion || null,
-        fechaHastaFacturacion: body.fechaHastaFacturacion || null,
-        idFacturaOriginal: body.idFacturaOriginal,
-        motivoRectificacion: body.motivoRectificacion || null,
+      const datos = body;
+      if (!datos.idFacturaOriginal || !datos.empresaId || !datos.numeroFactura) {
+        return reject(Service.rejectResponse(
+          'Campos obligatorios faltantes: idFacturaOriginal, empresaId, numeroFactura', 400,
+        ));
+      }
+
+      const original = await db.obtenerFacturaPorId(Number(datos.idFacturaOriginal));
+      if (!original) {
+        return reject(Service.rejectResponse('Factura original referenciada no encontrada', 404));
+      }
+
+      const resultado = await db.crearFacturaRectificativa({
+        empresaId:             datos.empresaId,
+        numeroFactura:         datos.numeroFactura,
+        baseImponible:         datos.baseImponible,
+        iva:                   datos.iva,
+        moneda:                datos.moneda || 'EUR',
+        fechaEmision:          toMysqlDatetime(datos.fechaEmision || new Date().toISOString()),
+        fechaDesdeFacturacion: datos.fechaDesdeFacturacion || null,
+        fechaHastaFacturacion: datos.fechaHastaFacturacion || null,
+        idFacturaOriginal:     datos.idFacturaOriginal,
+        motivoRectificacion:   datos.motivoRectificacion || null,
       });
 
       resolve(Service.successResponse({
-        idFacturaRectificativa: result.idFacturaRectificativa,
-        mensaje: 'Factura rectificativa creada correctamente',
+        idFacturaRectificativa: resultado.idFacturaRectificativa,
+        idFacturaOriginal:      datos.idFacturaOriginal,
+        empresaId:              datos.empresaId,
+        numeroFactura:          datos.numeroFactura,
+        baseImponible:          datos.baseImponible,
+        iva:                    datos.iva,
+        moneda:                 datos.moneda || 'EUR',
+        tipo:                   'RECTIFICATIVA',
+        estado:                 'VALIDA',
+        motivoRectificacion:    datos.motivoRectificacion || null,
+        fechaEmision:           datos.fechaEmision,
+        fechaDesdeFacturacion:  datos.fechaDesdeFacturacion || null,
+        fechaHastaFacturacion:  datos.fechaHastaFacturacion || null,
       }, 201));
     } catch (e) {
-      reject(Service.rejectResponse(
-        e.salida || e.message || 'Error al crear factura rectificativa',
-        e.status || 500,
-      ));
+      reject(Service.rejectResponse(e.salida || e.message || 'Error al crear factura rectificativa', e.status || 500));
+    }
+  },
+);
+
+/**
+ * Listar facturas rectificativas previas de una factura original.
+ * Endpoint interno consumido por el flujo MuleSoft de subsanación
+ * para el bucle de anulación de rectificativas anteriores.
+ */
+const listarRectificativasPrevias = ({ idFactura, WSKey }) => new Promise(
+  async (resolve, reject) => {
+    try {
+      await validarWSKey(WSKey);
+
+      const filas = await db.obtenerRectificativasPorFacturaOriginal(Number(idFactura));
+      const rectificativas = filas.map((f) => ({
+        idFactura:     f.id,
+        numeroFactura: f.numero_factura,
+        estado:        f.estado,
+        empresaId:     f.empresa_id,
+      }));
+
+      resolve(Service.successResponse(rectificativas));
+    } catch (e) {
+      reject(Service.rejectResponse(e.salida || e.message || 'Error al listar rectificativas previas', e.status || 500));
     }
   },
 );
@@ -220,4 +255,5 @@ module.exports = {
   consultarEstadoFactura,
   crearFactura,
   crearFacturaRectificativa,
+  listarRectificativasPrevias,
 };
