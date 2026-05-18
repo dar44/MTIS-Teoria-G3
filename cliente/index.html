@@ -14,7 +14,7 @@
         <span class="logo-icon">📄</span>
         <h1>Facturación Electrónica G3</h1>
       </div>
-      <p class="subtitle">Cliente operativo — Flujos BPMN (Emisión / Cobro / Consulta)</p>
+      <p class="subtitle">Cliente operativo — Flujos BPMN (Emisión / Cobro / Consulta / Anulación)</p>
     </header>
 
     <main class="main">
@@ -28,6 +28,7 @@
               <option value="emision">📄 Flujo de Emisión</option>
               <option value="cobro">💳 Flujo de Cobro</option>
               <option value="consulta">🔍 Flujo de Consulta</option>
+              <option value="anulacion">🚫 Flujo de Anulación</option>
             </select>
           </div>
           <div class="field">
@@ -223,6 +224,41 @@
         </div>
       </div>
 
+      <!-- SECCIÓN ANULACIÓN (oculta por defecto) -->
+      <div id="seccion-anulacion" style="display:none">
+        <div class="two-col">
+          <!-- Datos Factura a Anular -->
+          <section class="card">
+            <h2>🚫 Datos de la Factura a Anular</h2>
+            <div class="field">
+              <label for="anu-idFactura">ID Factura *</label>
+              <input type="number" id="anu-idFactura" value="1" placeholder="ID de la factura a anular">
+            </div>
+            <div class="field">
+              <label for="anu-numeroFactura">Nº Factura *</label>
+              <input type="text" id="anu-numeroFactura" value="FAC-2026-001" placeholder="FAC-2026-001">
+            </div>
+            <div class="field">
+              <label for="anu-motivo">Motivo Anulación</label>
+              <input type="text" id="anu-motivo" placeholder="Opcional — motivo de la anulación">
+            </div>
+          </section>
+
+          <!-- Datos Solicitante -->
+          <section class="card">
+            <h2>👤 Datos del Solicitante</h2>
+            <div class="field">
+              <label for="anu-nif">NIF Solicitante *</label>
+              <input type="text" id="anu-nif" value="B12345678" placeholder="NIF de la empresa emisora">
+            </div>
+            <div class="field">
+              <label for="anu-email">Email Solicitante *</label>
+              <input type="email" id="anu-email" value="empresa@correo.com" placeholder="Email para validación y notificación">
+            </div>
+          </section>
+        </div>
+      </div>
+
       <!-- Botones -->
       <div class="actions">
         <button id="btn-enviar" class="btn btn-primary" onclick="enviarPeticion()">
@@ -233,6 +269,9 @@
         </button>
         <button id="btn-test-empresa" class="btn btn-secondary" onclick="testEmpresaNoRegistrada()" style="display:block">
           🏢 Validar empresa no registrada
+        </button>
+        <button id="btn-test-anulada" class="btn btn-secondary" onclick="testFacturaYaAnulada()" style="display:none">
+          🔁 Probar factura ya anulada (409)
         </button>
 
         <button class="btn btn-outline" onclick="limpiarResultado()">

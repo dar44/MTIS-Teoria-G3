@@ -316,7 +316,7 @@ module.exports = {
     actualizarEstadoFactura,
     registrarEventoAuditoria,
     registrarErrorAuditoria
-    ,crearDocumentoPago
-    ,obtenerDocumentoPagoPorId
-    ,listarPagosPorFactura
+    , crearDocumentoPago
+    , obtenerDocumentoPagoPorId
+    , listarPagosPorFactura
 };

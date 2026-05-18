@@ -7,12 +7,12 @@
     <nombre>Mi Empresa S.L.</nombre>
     <nif>B12345678</nif>
     <email>empresa@correo.com</email>
+    <iban>ES9121000418450200051332</iban>
   </empresa>
   <baseImponible>1250.75</baseImponible>
-  <iva>0.2100</iva>
+  <iva>0.21</iva>
   <total>1513.41</total>
   <moneda>EUR</moneda>
   <tipo>ORDINARIA</tipo>
-  <estado>VALIDA</estado>
-  <fechaEmision>Sat May 16 2026 12:00:00 GMT+0200 (hora de verano de Europa central)</fechaEmision>
+  <fechaEmision>2026-05-18T08:48:00.000Z</fechaEmision>
 </factura>

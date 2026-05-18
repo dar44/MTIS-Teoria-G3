@@ -1961,6 +1961,7 @@ components:
           type: string
           example: Proceso de subsanación completado correctamente
 
+
     FacturaRectificativaCreateRequest:
       type: object
       required:
