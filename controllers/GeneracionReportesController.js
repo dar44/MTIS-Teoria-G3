@@ -14,9 +14,9 @@ module.exports.validarAccesoReporte = async function validarAccesoReporte(req, r
       body: req.body,
       WSKey: getWSKey(req),
     });
-    res.status(response.status || 200).json(response.body);
+    res.status(response.code || 200).json(response.payload);
   } catch (e) {
-    res.status(e.status || 500).json(e.error);
+    res.status(e.code || 500).json(e.error);
   }
 };
 
@@ -27,9 +27,9 @@ module.exports.validarRangoFechasReporte = async function validarRangoFechasRepo
       body: req.body,
       WSKey: getWSKey(req),
     });
-    res.status(response.status || 200).json(response.body);
+    res.status(response.code || 200).json(response.payload);
   } catch (e) {
-    res.status(e.status || 500).json(e.error);
+    res.status(e.code || 500).json(e.error);
   }
 };
 
@@ -40,9 +40,9 @@ module.exports.obtenerVolumenFacturacion = async function obtenerVolumenFacturac
       body: req.body,
       WSKey: getWSKey(req),
     });
-    res.status(response.status || 200).json(response.body);
+    res.status(response.code || 200).json(response.payload);
   } catch (e) {
-    res.status(e.status || 500).json(e.error);
+    res.status(e.code || 500).json(e.error);
   }
 };
 
@@ -53,9 +53,9 @@ module.exports.registrarReporte = async function registrarReporte(req, res) {
       body: req.body,
       WSKey: getWSKey(req),
     });
-    res.status(response.status || 200).json(response.body);
+    res.status(response.code || 200).json(response.payload);
   } catch (e) {
-    res.status(e.status || 500).json(e.error);
+    res.status(e.code || 500).json(e.error);
   }
 };
 
@@ -67,9 +67,9 @@ module.exports.generarDocumentoPDFReporte = async function generarDocumentoPDFRe
       body: { ...req.body, idReporte },
       WSKey: getWSKey(req),
     });
-    res.status(response.status || 200).json(response.body);
+    res.status(response.code || 200).json(response.payload);
   } catch (e) {
-    res.status(e.status || 500).json(e.error);
+    res.status(e.code || 500).json(e.error);
   }
 };
 
@@ -80,9 +80,9 @@ module.exports.enviarNotificacionReporte = async function enviarNotificacionRepo
       body: req.body,
       WSKey: getWSKey(req),
     });
-    res.status(response.status || 200).json(response.body);
+    res.status(response.code || 200).json(response.payload);
   } catch (e) {
-    res.status(e.status || 500).json(e.error);
+    res.status(e.code || 500).json(e.error);
   }
 };
 
@@ -94,8 +94,8 @@ module.exports.obtenerReportePorId = async function obtenerReportePorId(req, res
       idReporte,
       WSKey: getWSKey(req),
     });
-    res.status(response.status || 200).json(response.body);
+    res.status(response.code || 200).json(response.payload);
   } catch (e) {
-    res.status(e.status || 500).json(e.error);
+    res.status(e.code || 500).json(e.error);
   }
 };

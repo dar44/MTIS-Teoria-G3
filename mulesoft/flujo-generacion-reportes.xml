@@ -59,12 +59,15 @@ output text/plain
         </ee:transform>
       </when>
       <otherwise>
-        <apikit-soap:router config-ref="soapkit-config" doc:name="Enrutador SOAP" />
+        <apikit-soap:router config-ref="soapkit-config" doc:name="Enrutador SOAP">
+          <apikit-soap:message>#[payload]</apikit-soap:message>
+          <apikit-soap:attributes>#[attributes]</apikit-soap:attributes>
+        </apikit-soap:router>
       </otherwise>
     </choice>
   </flow>
 
-  <flow name="solicitarGeneracionReporte:\soapkit-config">
+  <flow name="solicitarGeneracion:\soapkit-config">
     <ee:transform doc:name="Extraer variables de SOAP request">
       <ee:variables>
         <ee:set-variable variableName="InputWSKey"><![CDATA[%dw 2.0
@@ -139,7 +142,7 @@ output application/json
         </http:request>
 
         <!-- Paso 3: Obtener Volumen Facturacion -->
-        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/obtener-volumen" doc:name="Obtener Volumen Facturacion">
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/obtener-volumen" doc:name="Obtener Volumen Facturacion" target="respuesta_volumen" targetValue="#[output application/java --- payload]">
           <http:body><![CDATA[#[%dw 2.0
 output application/json
 --- {
@@ -149,10 +152,9 @@ output application/json
 }]]]></http:body>
           <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
         </http:request>
-        <set-variable variableName="respuesta_volumen" value="#[payload]" doc:name="Guardar Respuesta Volumen"/>
 
         <!-- Paso 4: Registrar Reporte -->
-        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/registrar" doc:name="Registrar Reporte">
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/registrar" doc:name="Registrar Reporte" target="respuesta_registro" targetValue="#[output application/java --- payload]">
           <http:body><![CDATA[#[%dw 2.0
 output application/json
 --- {
@@ -163,14 +165,12 @@ output application/json
 }]]]></http:body>
           <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
         </http:request>
-        <set-variable variableName="respuesta_registro" value="#[payload]" doc:name="Guardar Respuesta Registro"/>
-        <set-variable variableName="idReporte" value="#[vars.respuesta_registro.idReporte]" doc:name="Guardar ID Reporte"/>
+        <set-variable variableName="idReporte" value="#[vars.respuesta_registro.datos.idReporte default vars.respuesta_registro.idReporte]" doc:name="Guardar ID Reporte"/>
 
         <!-- Paso 5: Generar PDF Reporte -->
-        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="#['/reportes/generar-pdf/' ++ (vars.idReporte as String)]" doc:name="Generar PDF Reporte">
+        <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="#['/reportes/generar-pdf/' ++ (vars.idReporte as String)]" doc:name="Generar PDF Reporte" target="respuesta_pdf" targetValue="#[output application/java --- payload]">
           <http:headers><![CDATA[#[{ WSKey: vars.InputWSKey, "Content-Type": "application/json" }]]]></http:headers>
         </http:request>
-        <set-variable variableName="respuesta_pdf" value="#[payload]" doc:name="Guardar Respuesta PDF"/>
 
         <!-- Paso 6: Enviar Notificacion Reporte -->
         <http:request method="POST" config-ref="REST_API_REPORTES_Config" path="/reportes/notificar" doc:name="Enviar Notificacion Reporte">

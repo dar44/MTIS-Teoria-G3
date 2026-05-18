@@ -36,6 +36,17 @@ const PASOS_BPMN_CONSULTA = [
   'Fin',
 ];
 
+const PASOS_BPMN_ANULACION = [
+  'Validar WSKey',
+  'Validar datos del solicitante (NIF + empresa)',
+  'Verificar existencia de la factura',
+  'Consultar estado actual de la factura',
+  'Comprobar que la factura es anulable',
+  'Enviar solicitud a la Agencia Tributaria',
+  'Actualizar estado a ANULADA en BD',
+  'Notificar al emisor el resultado',
+];
+
 const PASOS_BPMN_REPORTES = [
   'Validar WSKey',
   'Validar Acceso (Usuario)',
@@ -56,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (facFecha) {
     facFecha.value = local.toISOString().slice(0, 16);
   }
-  
+
   // Rellenar fecha pago en cobro
   rellenarFechaHoy();
 });
@@ -77,6 +88,7 @@ function cambiarFlujo() {
   const seccionEmision = document.querySelector('.two-col');
   const seccionCobro = document.getElementById('seccion-cobro');
   const seccionConsulta = document.getElementById('seccion-consulta');
+  const seccionAnulacion = document.getElementById('seccion-anulacion');
   const btnEnviar = document.getElementById('btn-enviar');
   const btnWSKey = document.getElementById('btn-test-wskey');
   const btnEmpresa = document.getElementById('btn-test-empresa');
@@ -86,6 +98,8 @@ function cambiarFlujo() {
     seccionEmision.style.display = 'grid';
     seccionCobro.style.display = 'none';
     seccionConsulta.style.display = 'none';
+    seccionAnulacion.style.display = 'none';
+    document.getElementById('btn-test-anulada').style.display = 'none';
     if (document.getElementById('seccion-reportes')) document.getElementById('seccion-reportes').style.display = 'none';
     btnEnviar.textContent = '🚀 Iniciar Flujo de Emisión';
     btnWSKey.style.display = 'block';
@@ -98,10 +112,12 @@ function cambiarFlujo() {
     seccionEmision.style.display = 'none';
     seccionCobro.style.display = 'block';
     seccionConsulta.style.display = 'none';
+    seccionAnulacion.style.display = 'none';
     if (document.getElementById('seccion-reportes')) document.getElementById('seccion-reportes').style.display = 'none';
     btnEnviar.textContent = '💳 Iniciar Flujo de Cobro';
     btnWSKey.style.display = 'none';
     btnEmpresa.style.display = 'none';
+    document.getElementById('btn-test-anulada').style.display = 'none';
     endpointSelect.innerHTML = `
       <option value="http://localhost:7777/proxy/mule/cobros/iniciar">MuleSoft via proxy (puerto 14102)</option>
       <option value="http://localhost:7777/cobros/iniciar">Node.js directo (puerto 7777)</option>
@@ -114,9 +130,24 @@ function cambiarFlujo() {
     btnEnviar.textContent = '🔍 Iniciar Flujo de Consulta';
     btnWSKey.style.display = 'none';
     btnEmpresa.style.display = 'none';
+    document.getElementById('btn-test-anulada').style.display = 'none';
+    seccionAnulacion.style.display = 'none';
     endpointSelect.innerHTML = `
       <option value="http://localhost:7777/proxy/mule/flujo-consulta/iniciar">MuleSoft via proxy (puerto 9092)</option>
       <option value="http://localhost:7777/flujo-consulta/iniciar">Node.js directo (puerto 7777)</option>
+    `;
+  } else if (flujo === 'anulacion') {
+    seccionEmision.style.display = 'none';
+    seccionCobro.style.display = 'none';
+    seccionConsulta.style.display = 'none';
+    seccionAnulacion.style.display = 'block';
+    btnEnviar.textContent = '🚫 Iniciar Flujo de Anulación';
+    btnWSKey.style.display = 'block';
+    btnEmpresa.style.display = 'none';
+    document.getElementById('btn-test-anulada').style.display = 'block';
+    endpointSelect.innerHTML = `
+      <option value="http://localhost:7777/proxy/mule/flujo-anulacion/iniciar">MuleSoft via proxy (puerto 9095)</option>
+      <option value="http://localhost:7777/flujo-anulacion/iniciar">Node.js directo (puerto 7777)</option>
     `;
   } else if (flujo === 'reportes') {
     seccionEmision.style.display = 'none';
@@ -153,7 +184,7 @@ function getFormDataEmision() {
     tipo: document.getElementById('fac-tipo').value,
     fechaEmision: new Date(document.getElementById('fac-fecha').value).toISOString(),
   };
-  
+
   const desde = document.getElementById('fac-desde').value;
   const hasta = document.getElementById('fac-hasta').value;
   if (desde) factura.fechaDesdeFacturacion = desde;
@@ -193,6 +224,15 @@ function getFormDataConsulta() {
   };
 }
 
+function getFormDataAnulacion() {
+  return {
+    idFactura: parseInt(document.getElementById('anu-idFactura').value),
+    nifSolicitante: document.getElementById('anu-nif').value,
+    emailSolicitante: document.getElementById('anu-email').value,
+    motivo: document.getElementById('anu-motivo').value || undefined,
+  };
+}
+
 function getFormDataReportes() {
   return {
     auth: {
@@ -218,6 +258,7 @@ function mostrarTimeline(pasoActual, estado, flujo = 'emision') {
   let PASOS;
   if (flujo === 'emision') PASOS = PASOS_BPMN_EMISION;
   else if (flujo === 'cobro') PASOS = PASOS_BPMN_COBRO;
+  else if (flujo === 'anulacion') PASOS = PASOS_BPMN_ANULACION;
   else if (flujo === 'reportes') PASOS = PASOS_BPMN_REPORTES;
   else PASOS = PASOS_BPMN_CONSULTA;
 
@@ -251,17 +292,18 @@ function mostrarTimeline(pasoActual, estado, flujo = 'emision') {
 
 function detectarPasoFallido(status, body, flujo = 'emision') {
   const msg = JSON.stringify(body).toLowerCase();
-  
+
   // Éxito (2xx)
   if (status >= 200 && status < 300) {
     let PASOS;
     if (flujo === 'emision') PASOS = PASOS_BPMN_EMISION;
     else if (flujo === 'cobro') PASOS = PASOS_BPMN_COBRO;
+    else if (flujo === 'anulacion') PASOS = PASOS_BPMN_ANULACION;
     else if (flujo === 'reportes') PASOS = PASOS_BPMN_REPORTES;
     else PASOS = PASOS_BPMN_CONSULTA;
     return { paso: PASOS.length - 1, estado: 'done' };
   }
-  
+
   // Errores en EMISIÓN
   if (flujo === 'emision') {
     if (msg.includes('wskey')) return { paso: 0, estado: 'error' };
@@ -272,7 +314,17 @@ function detectarPasoFallido(status, body, flujo = 'emision') {
     if (msg.includes('xml')) return { paso: 5, estado: 'error' };
     if (msg.includes('pdf')) return { paso: 6, estado: 'error' };
     return { paso: 0, estado: 'error' };
-  } 
+  }
+  // Errores en ANULACION
+  if (flujo === 'anulacion') {
+    if (msg.includes('wskey') || status === 401) return { paso: 0, estado: 'error' };
+    if (msg.includes('solicitante') || msg.includes('nif') || msg.includes('nif') || status === 400) return { paso: 1, estado: 'error' };
+    if (msg.includes('no encontrada') || msg.includes('no existe') || status === 404) return { paso: 2, estado: 'error' };
+    if (msg.includes('ya anulada') || status === 409) return { paso: 4, estado: 'error' };
+    if (msg.includes('agencia') || msg.includes('tributaria')) return { paso: 5, estado: 'error' };
+    if (msg.includes('actualiz') || msg.includes('estado')) return { paso: 6, estado: 'error' };
+    return { paso: 0, estado: 'error' };
+  }
   // Errores en COBRO
   else if (flujo === 'cobro') {
     if (msg.includes('wskey')) return { paso: 0, estado: 'error' };
@@ -314,7 +366,7 @@ function mostrarResultado(status, body, elapsed, flujo = 'emision') {
   document.getElementById('response-time').textContent = `${elapsed}ms`;
   document.getElementById('resultado').textContent = JSON.stringify(body, null, 2);
 
-  // Mostrar resumen conciso para cobro y consulta
+  // Mostrar resumen conciso para cobro, consulta y anulacion
   const resumenEl = document.getElementById('resultado-info');
   if (resumenEl) {
     resumenEl.innerHTML = '';
@@ -334,6 +386,14 @@ function mostrarResultado(status, body, elapsed, flujo = 'emision') {
       const lines = [];
       if (xml) lines.push(`<strong>XML:</strong> ${xml}`);
       if (ruta) lines.push(`<strong>Archivo:</strong> ${ruta}`);
+      resumenEl.innerHTML = lines.join(' — ');
+      resumenEl.style.display = lines.length ? 'block' : 'none';
+    } else if (flujo === 'anulacion' && status >= 200 && status < 300) {
+      const estadoFinal = body.estadoFinal || null;
+      const numFactura = body.numeroFactura || null;
+      const lines = [];
+      if (numFactura) lines.push(`<strong>Factura:</strong> ${numFactura}`);
+      if (estadoFinal) lines.push(`<strong>Estado final:</strong> ${estadoFinal}`);
       resumenEl.innerHTML = lines.join(' — ');
       resumenEl.style.display = lines.length ? 'block' : 'none';
     } else {
@@ -362,7 +422,7 @@ function mostrarCurl(url, wskey, bodyObj) {
 async function hacerPeticion(url, wskey, body, flujo = 'emision') {
   const overlay = document.getElementById('overlay');
   if (overlay) overlay.style.display = 'flex';
-  
+
   const btnEnviar = document.getElementById('btn-enviar');
   if (btnEnviar) btnEnviar.disabled = true;
 
@@ -373,7 +433,7 @@ async function hacerPeticion(url, wskey, body, flujo = 'emision') {
   try {
     let finalBody = body;
     let headers = { 'Content-Type': 'application/json', 'WSKey': wskey };
-    
+
     if (flujo === 'reportes') {
       headers['Content-Type'] = 'text/xml';
       finalBody = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:gen="http://www.mtis.org/GeneracionReportes/">
@@ -402,7 +462,7 @@ async function hacerPeticion(url, wskey, body, flujo = 'emision') {
       body: finalBody,
     });
     const elapsed = Date.now() - start;
-    
+
     // Leer el body UNA SOLA VEZ
     const text = await res.text();
     let data;
@@ -415,13 +475,13 @@ async function hacerPeticion(url, wskey, body, flujo = 'emision') {
         if (matchMensaje) data.mensaje = matchMensaje[1];
       }
     } else {
-      try { 
-        data = JSON.parse(text); 
-      } catch { 
-        data = { rawResponse: text }; 
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { rawResponse: text };
       }
     }
-    
+
     mostrarResultado(res.status, data, elapsed, flujo);
     mostrarCurl(url, wskey, body);
   } catch (err) {
@@ -441,17 +501,19 @@ function enviarPeticion() {
   const url = document.getElementById('endpoint').value;
   const wskey = document.getElementById('wskey').value;
   let body;
-  
+
   if (flujo === 'emision') {
     body = getFormDataEmision();
   } else if (flujo === 'cobro') {
     body = getFormDataCobro();
+  } else if (flujo === 'anulacion') {
+    body = getFormDataAnulacion();
   } else if (flujo === 'reportes') {
     body = getFormDataReportes();
   } else {
     body = getFormDataConsulta();
   }
-  
+
   hacerPeticion(url, wskey, body, flujo);
 }
 
@@ -459,13 +521,15 @@ function testWSKeyInvalida() {
   const flujo = document.getElementById('flujo').value;
   const url = document.getElementById('endpoint').value;
   let body;
-  
+
   if (flujo === 'emision') {
     body = getFormDataEmision();
+  } else if (flujo === 'anulacion') {
+    body = getFormDataAnulacion();
   } else {
     body = getFormDataCobro();
   }
-  
+
   hacerPeticion(url, 'clave_incorrecta_12345', body, flujo);
 }
 
@@ -479,6 +543,13 @@ function testEmpresaNoRegistrada() {
   hacerPeticion(url, wskey, body, 'emision');
 }
 
+function testFacturaYaAnulada() {
+  const url = document.getElementById('endpoint').value;
+  const wskey = document.getElementById('wskey').value;
+  // Reutiliza los datos del formulario pero con un ID que se asume ya anulado
+  const body = getFormDataAnulacion();
+  hacerPeticion(url, wskey, body, 'anulacion');
+}
 
 function limpiarResultado() {
   document.getElementById('timeline-section').style.display = 'none';

@@ -1,0 +1,130 @@
+#%RAML 1.0
+title: API REST - Facturacion Electronica G3 (Anulacion de Factura)
+version: 1.0.0
+baseUri: http://localhost:9095/api
+mediaType: application/json
+description: Contrato API para el proceso de Anulacion de Factura (Sergio Minguez Berja)
+
+types:
+  AnulacionFacturaRequest:
+    type: object
+    properties:
+      idFactura:
+        type: integer
+        required: true
+        example: 42
+      nifSolicitante:
+        type: string
+        required: true
+        example: B12345678
+      emailSolicitante:
+        type: string
+        required: true
+        example: empresa@correo.com
+      motivo:
+        type: string
+        required: false
+        example: Error en los datos de facturacion
+
+  AnulacionFacturaResponse:
+    type: object
+    properties:
+      idFactura:
+        type: integer
+        example: 42
+      numeroFactura:
+        type: string
+        example: FAC-2025-001
+      estadoFinal:
+        type: string
+        example: ANULADA
+      mensaje:
+        type: string
+        example: Factura anulada correctamente. Notificacion enviada a la Agencia Tributaria y al emisor.
+
+  ErrorResponse:
+    type: object
+    properties:
+      codigo:
+        type: string
+        example: ERR-404
+      mensaje:
+        type: string
+        example: La factura solicitada no existe en el sistema
+      detalle:
+        type: string
+        required: false
+        example: No se encontro ninguna factura con id 42
+
+/flujo-anulacion:
+  /iniciar:
+    post:
+      displayName: Iniciar flujo de anulacion de factura
+      description: |
+        Inicia el proceso completo de anulacion de factura:
+        valida WSKey, datos del solicitante, existencia y estado de la factura,
+        envia notificacion a Agencia Tributaria, actualiza estado a ANULADA y notifica al emisor.
+      headers:
+        WSKey:
+          type: string
+          required: true
+          description: Clave de autenticacion WSKey
+          example: MI_CLAVE_SECRETA_G3
+      body:
+        application/json:
+          type: AnulacionFacturaRequest
+          example:
+            idFactura: 42
+            nifSolicitante: B12345678
+            emailSolicitante: empresa@correo.com
+            motivo: Error en los datos de facturacion
+      responses:
+        200:
+          body:
+            application/json:
+              type: AnulacionFacturaResponse
+              example:
+                idFactura: 42
+                numeroFactura: FAC-2025-001
+                estadoFinal: ANULADA
+                mensaje: Factura anulada correctamente.
+        400:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-400
+                mensaje: Datos de entrada invalidos
+                detalle: Los campos idFactura, nif y email son obligatorios
+        401:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-401
+                mensaje: WSKey no valida
+                detalle: Acceso no autorizado al sistema de facturacion
+        404:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-404
+                mensaje: Factura no encontrada
+                detalle: No existe ninguna factura con id 42 en el sistema
+        409:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-409
+                mensaje: Factura ya anulada
+                detalle: La factura FAC-2025-001 ya se encuentra en estado ANULADA
+        500:
+          body:
+            application/json:
+              type: ErrorResponse
+              example:
+                codigo: ERR-500
+                mensaje: Error tecnico en el flujo de anulacion
+                detalle: No se pudo completar la actualizacion del estado en la base de datos

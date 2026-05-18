@@ -1,0 +1,12 @@
+{
+  "empresaId": 1,
+  "numeroFactura": "FAC-2026-NUEVA",
+  "baseImponible": 1000,
+  "iva": 0.21,
+  "moneda": "EUR",
+  "tipo": "ORDINARIA",
+  "estado": "PENDIENTE",
+  "fechaEmision": "2026-05-18T10:00:00Z",
+  "fechaDesdeFacturacion": "2026-04-01",
+  "fechaHastaFacturacion": "2026-05-01"
+}

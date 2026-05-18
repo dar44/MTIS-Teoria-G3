@@ -1,0 +1,14 @@
+{
+  "idFacturaOriginal": 3,
+  "motivoSubsanacion": "Error en la base imponible",
+  "datosCorregidos": {
+    "numeroFactura": "RECT-2026-TEST-03",
+    "baseImponible": 1500.00,
+    "iva": 0.21,
+    "moneda": "EUR",
+    "tipo": "RECTIFICATIVA",
+    "fechaEmision": "2026-05-18T10:00:00Z",
+    "fechaDesdeFacturacion": "2026-04-01",
+    "fechaHastaFacturacion": "2026-05-01"
+  }
+}
