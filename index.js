@@ -188,4 +188,5 @@ http.createServer(server).listen(serverPort, function () {
   console.log('Servidor escuchando en http://localhost:%d', serverPort);
   console.log('Swagger UI disponible en http://localhost:%d/docs', serverPort);
   console.log('Cliente de pruebas en http://localhost:%d/cliente', serverPort);
+  console.log('Cliente Subsanación en http://localhost:%d/cliente/subsanacion.html', serverPort);
 });
